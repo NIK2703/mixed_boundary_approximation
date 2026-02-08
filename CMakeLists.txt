@@ -38,6 +38,11 @@ add_library(mixed_approximation
     src/mixed_approximation.cpp
     src/config_reader.cpp
     src/decomposition.cpp
+    src/weight_multiplier.cpp
+    src/interpolation_basis.cpp
+    src/correction_polynomial.cpp
+    src/composite_polynomial.cpp
+    src/parameterization_verification.cpp
 )
 
 target_include_directories(mixed_approximation

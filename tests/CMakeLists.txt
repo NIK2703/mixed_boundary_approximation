@@ -11,6 +11,16 @@ target_link_libraries(test_polynomial
 )
 gtest_discover_tests(test_polynomial)
 
+# Correction Polynomial (шаг 2.1.4)
+add_executable(test_correction_polynomial
+    correction_polynomial/test_correction_polynomial.cpp
+)
+target_link_libraries(test_correction_polynomial
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_correction_polynomial)
+
 # Функционал
 add_executable(test_functional
     functional/test_functional.cpp
@@ -61,17 +71,71 @@ target_link_libraries(test_integration
 )
 gtest_discover_tests(test_integration)
 
+# Weight Multiplier (шаг 2.1.3)
+add_executable(test_weight_multiplier
+    weight_multiplier/test_weight_multiplier.cpp
+)
+target_link_libraries(test_weight_multiplier
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_weight_multiplier)
+
+# Interpolation Basis (шаг 2.1.2)
+add_executable(test_interpolation_basis
+    interpolation_basis/test_interpolation_basis.cpp
+)
+target_link_libraries(test_interpolation_basis
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_interpolation_basis)
+
 # Объединённый тестовый запуск (опционально)
 add_executable(test_all
     polynomial/test_polynomial.cpp
+    correction_polynomial/test_correction_polynomial.cpp
     functional/test_functional.cpp
     validator/test_validator_basic.cpp
     validator/test_validator_advanced.cpp
     decomposition/test_decomposition.cpp
     integration/test_integration.cpp
+    weight_multiplier/test_weight_multiplier.cpp
+    interpolation_basis/test_interpolation_basis.cpp
+    test_step_2_1_1.cpp
 )
 target_link_libraries(test_all
     mixed_approximation
     GTest::gtest_main
 )
 gtest_discover_tests(test_all)
+
+# Тест шага 2.1.1 - полная параметризация "базис + коррекция"
+add_executable(test_step_2_1_1
+    test_step_2_1_1.cpp
+)
+target_link_libraries(test_step_2_1_1
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_2_1_1)
+
+# Тест шага 2.1.5 - сборка итогового полинома F(x)
+add_executable(test_step_2_1_5
+    test_step_2_1_5.cpp
+)
+target_link_libraries(test_step_2_1_5
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_2_1_5)
+
+# Тест шага 2.1.6 - верификация корректности параметризации
+add_executable(test_step_2_1_6
+    test_step_2_1_6.cpp
+)
+target_link_libraries(test_step_2_1_6
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_2_1_6)
