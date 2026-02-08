@@ -1,0 +1,54 @@
+# ========================================
+# Конфигурация задачи смешанной аппроксимации
+# Версия формата: 1.2
+# ========================================
+
+task:
+  id: "example_spectrum_2026"
+  description: "Аппроксимация спектральных данных с запретной зоной"
+  created_at: "2026-02-08T14:30:00Z"
+  author: "example@lab.org"
+
+problem:
+  # Основные параметры задачи
+  polynomial_degree: 8                # Степень итогового полинома (n)
+  interval:
+    a: 0.0                            # Левая граница [a, b]
+    b: 10.0                           # Правая граница [a, b]
+  
+  # Веса критериев
+  weights:
+    regularization: 0.15              # γ — параметр регуляризации гладкости
+  
+  # Параметры численной стабильности
+  numerical:
+    epsilon_safe: 1e-8                # Минимальное расстояние до барьеров
+    epsilon_interp: 1e-10             # Точность интерполяции
+    max_iterations: 1000              # Максимум итераций оптимизатора
+    convergence_tol: 1e-8             # Порог сходимости по функционалу
+
+data_sources:
+  # Пути к файлам с данными (относительно расположения config.yaml)
+  approximation: "data/approximation.csv"
+  repulsion:     "data/repulsion.csv"
+  interpolation: "data/interpolation.csv"
+
+processing_options:
+  # Автоматические преобразования перед оптимизацией
+  normalize_coordinates: true         # Нормализация x → [-1, 1]
+  normalize_values: true              # Нормализация y → [-1, 1]
+  basis_type: "chebyshev"             # "monomial" или "chebyshev"
+  
+  # Стратегия инициализации
+  initialization_strategy: "mnk_with_barrier_correction"
+  
+  # Диагностика и верификация
+  enable_cross_validation: true       # Включить кросс-валидацию
+  cv_folds: 5                         # Число фолдов для кросс-валидации
+  enable_sensitivity_analysis: false  # Анализ чувствительности
+
+advanced:
+  # Расширенные параметры оптимизатора
+  lbfgs_memory: 10                    # Параметр памяти L-BFGS
+  initial_step: 1.0                   # Начальный шаг линейного поиска
+  barrier_smoothing: "quadratic"      # "quadratic", "logarithmic" или "hybrid"

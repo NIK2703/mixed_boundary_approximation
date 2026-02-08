@@ -1,0 +1,11 @@
+add_executable(test_basic test_basic.cpp)
+target_link_libraries(test_basic mixed_approximation)
+add_test(NAME test_basic COMMAND test_basic)
+
+add_executable(test_validator_advanced test_validator_advanced.cpp)
+target_link_libraries(test_validator_advanced mixed_approximation)
+add_test(NAME test_validator_advanced COMMAND test_validator_advanced)
+
+add_executable(test_validator_integration test_validator_integration.cpp)
+target_link_libraries(test_validator_integration mixed_approximation)
+add_test(NAME test_validator_integration COMMAND test_validator_integration)
