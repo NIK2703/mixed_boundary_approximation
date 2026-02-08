@@ -139,3 +139,13 @@ target_link_libraries(test_step_2_1_6
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_2_1_6)
+
+# Тест шага 2.1.7 - структуры данных для хранения параметризации
+add_executable(test_step_2_1_7
+    test_parameterization_data.cpp
+)
+target_link_libraries(test_step_2_1_7
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_2_1_7)

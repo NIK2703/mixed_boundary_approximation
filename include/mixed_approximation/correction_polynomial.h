@@ -190,6 +190,44 @@ struct CorrectionPolynomial {
      */
     std::string get_diagnostic_info() const;
     
+    // ============== Методы для FunctionalEvaluator (с внешними коэффициентами) ==============
+    
+    /**
+     * @brief Вычисление Q(x) с переданными коэффициентами
+     * @param x точка вычисления
+     * @param q внешние коэффициенты
+     * @return значение Q(x)
+     */
+    double evaluate_Q_with_coeffs(double x, const std::vector<double>& q) const;
+    
+    /**
+     * @brief Вычисление производной Q'(x) или Q''(x) с переданными коэффициентами
+     * @param x точка вычисления
+     * @param q внешние коэффициенты
+     * @param order порядок производной (1 или 2)
+     * @return значение производной
+     */
+    double evaluate_Q_derivative_with_coeffs(double x, const std::vector<double>& q, int order) const;
+    
+    /**
+     * @brief Вычисление k-й базисной функции φ_k(x)
+     * @param x точка вычисления
+     * @param q внешние коэффициенты (не используются для вычисления базисной функции, только для валидации размера)
+     * @param k индекс базисной функции
+     * @return значение φ_k(x)
+     */
+    double compute_basis_function_with_coeffs(double x, const std::vector<double>& q, int k) const;
+    
+    /**
+     * @brief Вычисление k-й базисной функции и её производных
+     * @param x точка вычисления
+     * @param q внешние коэффициенты
+     * @param k индекс базисной функции
+     * @param order порядок производной (0 - значение, 1 - первая, 2 - вторая)
+     * @return значение базисной функции или её производной
+     */
+    double compute_basis_derivative_with_coeffs(double x, const std::vector<double>& q, int k, int order) const;
+    
 private:
     // Вспомогательные методы для базисных функций
     double compute_basis_function(double x_norm, int k) const;
