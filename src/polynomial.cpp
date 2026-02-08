@@ -68,15 +68,16 @@ Polynomial Polynomial::operator+(const Polynomial& other) const {
     size_t max_size = std::max(coeffs_.size(), other.coeffs_.size());
     std::vector<double> result_coeffs(max_size, 0.0);
     
-    // Складываем коэффициенты, начиная со старших (индекс 0 соответствует старшей степени)
-    // coeffs_[0] - коэффициент при x^n, где n = degree()
-    // Для выравнивания: коэффициент при x^k находится на позиции (degree() - k)
-    
+    // Выравниваем полиномы по младшим коэффициентам (константы в конце)
+    // coeffs_ хранятся в порядке [a_n, a_{n-1}, ..., a_0]
+    // Чтобы сложить, нужно совместить коэффициенты при одинаковых степенях.
+    // Для этого добавляем, начиная с конца: младшие коэффициенты (константы) должны быть выровнены.
     for (size_t i = 0; i < coeffs_.size(); ++i) {
-        result_coeffs[i] += coeffs_[i];
+        // Позиция в result: смещение от начала = max_size - coeffs_.size() + i
+        result_coeffs[max_size - coeffs_.size() + i] += coeffs_[i];
     }
     for (size_t i = 0; i < other.coeffs_.size(); ++i) {
-        result_coeffs[i] += other.coeffs_[i];
+        result_coeffs[max_size - other.coeffs_.size() + i] += other.coeffs_[i];
     }
     
     return Polynomial(result_coeffs);
@@ -86,11 +87,12 @@ Polynomial Polynomial::operator-(const Polynomial& other) const {
     size_t max_size = std::max(coeffs_.size(), other.coeffs_.size());
     std::vector<double> result_coeffs(max_size, 0.0);
     
+    // Выравнивание по младшим коэффициентам
     for (size_t i = 0; i < coeffs_.size(); ++i) {
-        result_coeffs[i] += coeffs_[i];
+        result_coeffs[max_size - coeffs_.size() + i] += coeffs_[i];
     }
     for (size_t i = 0; i < other.coeffs_.size(); ++i) {
-        result_coeffs[i] -= other.coeffs_[i];
+        result_coeffs[max_size - other.coeffs_.size() + i] -= other.coeffs_[i];
     }
     
     return Polynomial(result_coeffs);
@@ -264,6 +266,52 @@ double integrate_second_derivative_squared(const Polynomial& poly, double a, dou
     }
     
     return integral;
+}
+
+Polynomial Polynomial::operator*(const Polynomial& other) const {
+    // Умножение полиномов: (Σ a_i x^i) * (Σ b_j x^j) = Σ_k (Σ_{i+j=k} a_i * b_j) x^k
+    // Но у нас коэффициенты хранятся в порядке [a_n, a_{n-1}, ..., a_0]
+    // где a_n соответствует x^n
+    int n1 = degree_;
+    int n2 = other.degree_;
+    int result_degree = n1 + n2;
+    
+    std::vector<double> result_coeffs(result_degree + 1, 0.0);
+    
+    // Преобразуем к формату [a_0, a_1, ..., a_n] для удобства умножения
+    std::vector<double> c1(n1 + 1, 0.0);
+    std::vector<double> c2(n2 + 1, 0.0);
+    
+    for (int i = 0; i <= n1; ++i) {
+        c1[i] = coeffs_[n1 - i];  // coeffs_[0] -> x^n, поэтому c1[n1] = coeffs_[0]
+    }
+    for (int i = 0; i <= n2; ++i) {
+        c2[i] = other.coeffs_[n2 - i];
+    }
+    
+    // Умножаем
+    for (int i = 0; i <= n1; ++i) {
+        for (int j = 0; j <= n2; ++j) {
+            result_coeffs[i + j] += c1[i] * c2[j];
+        }
+    }
+    
+    // Преобразуем обратно в формат [a_n, ..., a_0]
+    std::vector<double> final_coeffs(result_degree + 1, 0.0);
+    for (int i = 0; i <= result_degree; ++i) {
+        final_coeffs[result_degree - i] = result_coeffs[i];
+    }
+    
+    return Polynomial(final_coeffs);
+}
+
+Polynomial Polynomial::minus_scalar(double scalar) const {
+    // P(x) - scalar = (a_n x^n + ... + a_0) - scalar = a_n x^n + ... + (a_0 - scalar)
+    std::vector<double> new_coeffs = coeffs_;
+    if (!new_coeffs.empty()) {
+        new_coeffs.back() -= scalar;
+    }
+    return Polynomial(new_coeffs);
 }
 
 } // namespace mixed_approx

@@ -25,6 +25,7 @@ add_library(mixed_approximation
     src/optimizer.cpp
     src/mixed_approximation.cpp
     src/config_reader.cpp
+    src/decomposition.cpp
 )
 
 target_include_directories(mixed_approximation

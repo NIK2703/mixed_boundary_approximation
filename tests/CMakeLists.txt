@@ -9,3 +9,7 @@ add_test(NAME test_validator_advanced COMMAND test_validator_advanced)
 add_executable(test_validator_integration test_validator_integration.cpp)
 target_link_libraries(test_validator_integration mixed_approximation)
 add_test(NAME test_validator_integration COMMAND test_validator_integration)
+
+add_executable(test_decomposition test_decomposition.cpp)
+target_link_libraries(test_decomposition mixed_approximation)
+add_test(NAME test_decomposition COMMAND test_decomposition)

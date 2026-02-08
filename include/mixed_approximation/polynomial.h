@@ -108,6 +108,20 @@ public:
      * @return градиент (вектор той же размерности, что и коэффициенты)
      */
     std::vector<double> gradient_squared_error(double x, double target) const;
+    
+    /**
+     * @brief Умножение полиномов
+     * @param other второй полином
+     * @return результат умножения
+     */
+    Polynomial operator*(const Polynomial& other) const;
+    
+    /**
+     * @brief Вычитание из полинома скаляра (для удобства)
+     * @param scalar вычитаемое значение
+     * @return результат вычитания (P(x) - scalar)
+     */
+    Polynomial minus_scalar(double scalar) const;
 };
 
 // ============== Вспомогательные функции ==============
@@ -122,6 +136,20 @@ public:
  * @return значение интеграла
  */
 double integrate_second_derivative_squared(const Polynomial& poly, double a, double b);
+
+/**
+ * @brief Построение интерполяционного полинома Лагранжа по заданным узлам
+ * @param nodes узлы интерполяции (InterpolationNode)
+ * @return полином степени m-1, удовлетворяющий F(z_e) = f(z_e)
+ */
+Polynomial build_lagrange_polynomial(const std::vector<InterpolationNode>& nodes);
+
+/**
+ * @brief Построение весового множителя W(x) = Π_{e} (x - z_e)
+ * @param nodes узлы (InterpolationNode, значение value игнорируется)
+ * @return полином степени m
+ */
+Polynomial build_interpolation_multiplier(const std::vector<InterpolationNode>& nodes);
 
 } // namespace mixed_approx
 

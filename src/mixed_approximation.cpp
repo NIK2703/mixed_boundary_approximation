@@ -1,89 +1,11 @@
 #include "mixed_approximation/mixed_approximation.h"
+#include "mixed_approximation/decomposition.h"
 #include <stdexcept>
-#include <cmath>
-#include <vector>
-#include <algorithm>
 #include <cmath>
 #include <vector>
 #include <algorithm>
 
 namespace mixed_approx {
-
-// Статические вспомогательные функции (не являются частью публичного интерфейса)
-
-/**
- * @brief Построение интерполяционного полинома Лагранжа
- * Возвращает полином степени m-1, удовлетворяющий F(z_e) = f(z_e) для всех узлов.
- */
-static Polynomial build_lagrange_polynomial(const std::vector<InterpolationNode>& nodes) {
-    int m = nodes.size();
-    if (m == 0) return Polynomial(0);
-    
-    // Результат: полином степени m-1
-    std::vector<double> result_coeffs(m, 0.0);
-    
-    for (int i = 0; i < m; ++i) {
-        double xi = nodes[i].x;
-        double fi = nodes[i].value;
-        
-        // Базисный полином Лагранжа L_i(x)
-        std::vector<double> Li_coeffs(1, 1.0); // степень 0
-        
-        for (int j = 0; j < m; ++j) {
-            if (j == i) continue;
-            double xj = nodes[j].x;
-            // Умножаем на (x - xj)
-            std::vector<double> new_coeffs(Li_coeffs.size() + 1, 0.0);
-            for (size_t k = 0; k < Li_coeffs.size(); ++k) {
-                new_coeffs[k] += -xj * Li_coeffs[k];   // коэффициент при x^k
-                new_coeffs[k+1] += Li_coeffs[k];      // коэффициент при x^{k+1}
-            }
-            Li_coeffs = new_coeffs;
-        }
-        
-        // Делим на знаменатель: prod_{j≠i} (xi - xj)
-        double denom = 1.0;
-        for (int j = 0; j < m; ++j) {
-            if (j == i) continue;
-            denom *= (xi - nodes[j].x);
-        }
-        if (std::abs(denom) < 1e-12) {
-            throw std::runtime_error("Duplicate interpolation nodes detected");
-        }
-        double scale = fi / denom;
-        for (double& c : Li_coeffs) {
-            c *= scale;
-        }
-        
-        // Добавляем к общему полиному
-        if (Li_coeffs.size() > result_coeffs.size()) {
-            result_coeffs.resize(Li_coeffs.size(), 0.0);
-        }
-        for (size_t k = 0; k < Li_coeffs.size(); ++k) {
-            result_coeffs[k] += Li_coeffs[k];
-        }
-    }
-    
-    return Polynomial(result_coeffs);
-}
-
-/**
- * @brief Построение весового множителя W(x) = Π_{e} (x - z_e)
- * Возвращает полином степени m.
- */
-static Polynomial build_interpolation_multiplier(const std::vector<InterpolationNode>& nodes) {
-    std::vector<double> coeffs(1, 1.0); // начинаем с 1
-    for (const auto& node : nodes) {
-        double z = node.x;
-        std::vector<double> new_coeffs(coeffs.size() + 1, 0.0);
-        for (size_t i = 0; i < coeffs.size(); ++i) {
-            new_coeffs[i] += -z * coeffs[i];
-            new_coeffs[i+1] += coeffs[i];
-        }
-        coeffs = new_coeffs;
-    }
-    return Polynomial(coeffs);
-}
 
 // ============== Реализация методов класса MixedApproximation ==============
 
@@ -129,50 +51,52 @@ Polynomial MixedApproximation::build_initial_approximation() const {
         return Polynomial(n);
     }
     
-    if (m == n + 1) {
-        // Количество узлов равно степени + 1, интерполяционный полином Лагранжа единственный
-        return build_lagrange_polynomial(config_.interp_nodes);
+    // Используем Decomposer для построения разложения
+    Decomposer::Parameters params;
+    params.polynomial_degree = n;
+    params.interval_start = config_.interval_start;
+    params.interval_end = config_.interval_end;
+    params.interp_nodes = config_.interp_nodes;
+    // Используем пороги из конфига или значения по умолчанию
+    params.epsilon_rank = 1e-12;
+    params.epsilon_unique = 1e-12;
+    params.epsilon_bound = 1e-9;
+    
+    DecompositionResult decomp = Decomposer::decompose(params);
+    
+    if (!decomp.is_valid()) {
+        throw std::invalid_argument("Decomposition failed: " + decomp.message());
     }
     
-    // Строим интерполяционный полином P_int(x) через все узлы (степени m-1)
-    Polynomial P_int = build_lagrange_polynomial(config_.interp_nodes);
+    // Начальное приближение: F(x) = P_int(x) + Q(x)·W(x) с Q(x) ≡ 0
+    // Это даёт полином, точно удовлетворяющий интерполяционным условиям
+    std::vector<double> zero_q(decomp.metadata.n_free, 0.0);
+    Polynomial poly = decomp.build_polynomial(zero_q);
     
     // Проверка начального приближения на близость к запрещённым значениям (шаг 1.2.6)
+    // Если P_int(x) слишком близок к y_j^* в точках отталкивания, добавляем небольшое возмущение
     const double epsilon_init = 1e-4;
     bool need_perturbation = false;
     for (const auto& point : config_.repel_points) {
-        double poly_value = P_int.evaluate(point.x);
+        double poly_value = poly.evaluate(point.x);
         if (std::abs(point.y_forbidden - poly_value) < epsilon_init) {
             need_perturbation = true;
             break;
         }
     }
     
-    Polynomial poly = P_int;
-    
-    if (need_perturbation && m < n + 1) {
-        // Строим множитель Π(x - z_e)
-        Polynomial multiplier = build_interpolation_multiplier(config_.interp_nodes);
+    if (need_perturbation && decomp.metadata.n_free > 0) {
+        // Добавляем небольшое возмущение в свободные параметры Q(x)
+        // Генерируем случайное возмущение малой амплитуды
+        std::vector<double> perturb_q(decomp.metadata.n_free, 0.0);
+        // Простейшее: ненулевой коэффициент только для старшей степени
+        perturb_q[0] = 1e-6;  // малая амплитуда
         
-        // Возмущаем, добавляя R(x) = perturb * x^{n-m} * Π(x)
-        double perturb = 1e-6;
-        const auto& pi_coeffs = multiplier.coefficients();  // [c_m, c_{m-1}, ..., c_0]
-        std::vector<double> R_coeffs(n + 1, 0.0);
-        // Располагаем коэффициенты Π(x) в R(x) со сдвигом на n-m позиций.
-        // pi_coeffs[0] соответствует степени m, после умножения на x^{n-m} получаем степень n.
-        for (size_t i = 0; i < pi_coeffs.size() && i < R_coeffs.size(); ++i) {
-            R_coeffs[i] = perturb * pi_coeffs[i];
-        }
-        Polynomial R(R_coeffs);
-        poly = poly + R;
+        // Перестраиваем полином с возмущением
+        poly = decomp.build_polynomial(perturb_q);
     }
     
-    // Дополняем коэффициенты нулями до степени n, если необходимо
-    auto coeffs = poly.coefficients();
-    if (static_cast<int>(coeffs.size()) < n + 1) {
-        coeffs.resize(n + 1, 0.0);
-    }
-    return Polynomial(coeffs);
+    return poly;
 }
 
 Polynomial MixedApproximation::apply_interpolation_constraints(const Polynomial& poly) const {
