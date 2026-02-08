@@ -439,7 +439,283 @@ TEST(DecompositionTest, BuildPolynomialWithDifferentQ) {
     std::cout << "  PASSED\n";
 }
 
-// Тест 15: Проверка evaluate без построения полного полинома - пропущен
-// Причина: несоответствие интерфейса (порядок коэффициентов Q)
-// TODO: Уточнить спецификацию и исправить в будущем
-// Оригинальный тест закомментирован, чтобы не мешать сборке
+// Тест 15: WeightMultiplier - вычисление производных
+TEST(DecompositionTest, WeightMultiplierDerivatives) {
+    std::cout << "Test 15: WeightMultiplier derivatives\n";
+    
+    // W(x) = (x - 1)(x - 2) = x^2 - 3x + 2
+    WeightMultiplier wm;
+    std::vector<double> roots = {1.0, 2.0};
+    wm.build_from_roots(roots);
+    
+    // W'(x) = 2x - 3
+    // W''(x) = 2
+    
+    EXPECT_NEAR(wm.evaluate_derivative(0.0, 1), -3.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(1.0, 1), -1.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(2.0, 1), 1.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(3.0, 1), 3.0, 1e-10);
+    
+    EXPECT_NEAR(wm.evaluate_derivative(0.0, 2), 2.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(1.0, 2), 2.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(2.5, 2), 2.0, 1e-10);
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 16: WeightMultiplier - верификация построения
+TEST(DecompositionTest, WeightMultiplierVerifyConstruction) {
+    std::cout << "Test 16: WeightMultiplier verify_construction\n";
+    
+    WeightMultiplier wm;
+    std::vector<double> roots = {1.0, 2.0, 3.0};
+    wm.build_from_roots(roots);
+    
+    EXPECT_TRUE(wm.verify_construction(1e-10));
+    
+    // Проверяем, что для m=0 тоже работает
+    WeightMultiplier wm_zero;
+    wm_zero.build_from_roots({});
+    EXPECT_TRUE(wm_zero.verify_construction(1e-10));
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 17: WeightMultiplier - кэширование
+TEST(DecompositionTest, WeightMultiplierCaches) {
+    std::cout << "Test 17: WeightMultiplier caches\n";
+    
+    WeightMultiplier wm;
+    std::vector<double> roots = {1.0, 2.0, 3.0};
+    wm.build_from_roots(roots);
+    
+    std::vector<double> points_x = {0.0, 0.5, 1.0, 1.5, 2.0};
+    std::vector<double> points_y = {4.0, 5.0, 6.0};
+    
+    wm.build_caches(points_x, points_y);
+    
+    EXPECT_TRUE(wm.caches_ready);
+    EXPECT_EQ(wm.cache_x_vals.size(), points_x.size());
+    EXPECT_EQ(wm.cache_y_vals.size(), points_y.size());
+    EXPECT_EQ(wm.cache_x_deriv1.size(), points_x.size());
+    EXPECT_EQ(wm.cache_y_deriv1.size(), points_y.size());
+    EXPECT_EQ(wm.cache_x_deriv2.size(), points_x.size());
+    EXPECT_EQ(wm.cache_y_deriv2.size(), points_y.size());
+    
+    // Проверяем, что кэшированные значения соответствуют вычисляемым
+    for (size_t i = 0; i < points_x.size(); ++i) {
+        EXPECT_NEAR(wm.cache_x_vals[i], wm.evaluate(points_x[i]), 1e-12);
+        EXPECT_NEAR(wm.cache_x_deriv1[i], wm.evaluate_derivative(points_x[i], 1), 1e-12);
+        EXPECT_NEAR(wm.cache_x_deriv2[i], wm.evaluate_derivative(points_x[i], 2), 1e-12);
+    }
+    
+    wm.clear_caches();
+    EXPECT_FALSE(wm.caches_ready);
+    EXPECT_TRUE(wm.cache_x_vals.empty());
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 18: WeightMultiplier - умножение на Q(x)
+TEST(DecompositionTest, WeightMultiplierMultiplyByQ) {
+    std::cout << "Test 18: WeightMultiplier multiply_by_Q\n";
+    
+    // W(x) = (x - 1)(x - 2) = x^2 - 3x + 2
+    WeightMultiplier wm;
+    std::vector<double> roots = {1.0, 2.0};
+    wm.build_from_roots(roots);
+    
+    // Q(x) = 1 + x (коэффициенты в порядке убывания: [1, 1])
+    std::vector<double> q_coeffs = {1.0, 1.0};
+    
+    // Q(x)·W(x) = (1 + x)(x^2 - 3x + 2) = x^3 - 2x^2 - x + 2
+    std::vector<double> expected = {1.0, -2.0, -1.0, 2.0};
+    
+    std::vector<double> product = wm.multiply_by_Q(q_coeffs);
+    
+    ASSERT_EQ(product.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(product[i], expected[i], 1e-10);
+    }
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 19: WeightMultiplier - evaluate_product
+TEST(DecompositionTest, WeightMultiplierEvaluateProduct) {
+    std::cout << "Test 19: WeightMultiplier evaluate_product\n";
+    
+    // W(x) = (x - 1)(x - 2) = x^2 - 3x + 2
+    WeightMultiplier wm;
+    std::vector<double> roots = {1.0, 2.0};
+    wm.build_from_roots(roots);
+    
+    // Q(x) = 1 + x
+    std::vector<double> q_coeffs = {1.0, 1.0};
+    
+    // Проверяем в нескольких точках
+    EXPECT_NEAR(wm.evaluate_product(0.0, q_coeffs), 2.0, 1e-10);  // Q(0)*W(0) = 1*2 = 2
+    EXPECT_NEAR(wm.evaluate_product(1.0, q_coeffs), 0.0, 1e-10);  // W(1)=0
+    EXPECT_NEAR(wm.evaluate_product(2.0, q_coeffs), 0.0, 1e-10);  // W(2)=0
+    EXPECT_NEAR(wm.evaluate_product(3.0, q_coeffs), 4.0*2.0, 1e-10);  // Q(3)=4, W(3)=2, prod=8
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 20: WeightMultiplier - нормализация
+TEST(DecompositionTest, WeightMultiplierNormalization) {
+    std::cout << "Test 20: WeightMultiplier normalization\n";
+    
+    // Корни далеко от нуля: 100, 200, 300
+    WeightMultiplier wm;
+    std::vector<double> roots = {100.0, 200.0, 300.0};
+    wm.build_from_roots(roots, 0.0, 1000.0, true);
+    
+    // Должна быть включена нормализация
+    EXPECT_TRUE(wm.is_normalized);
+    EXPECT_NEAR(wm.shift, 500.0, 1e-10);
+    EXPECT_NEAR(wm.scale, 500.0, 1e-10);
+    
+    // Нормализованные корни: (100-500)/500 = -0.8, (200-500)/500 = -0.6, (300-500)/500 = -0.4
+    ASSERT_EQ(wm.roots_norm.size(), 3u);
+    EXPECT_NEAR(wm.roots_norm[0], -0.8, 1e-10);
+    EXPECT_NEAR(wm.roots_norm[1], -0.6, 1e-10);
+    EXPECT_NEAR(wm.roots_norm[2], -0.4, 1e-10);
+    
+    // Проверяем, что W(x) вычисляется корректно в исходных координатах
+    double W_at_100 = wm.evaluate(100.0);
+    EXPECT_NEAR(W_at_100, 0.0, 1e-10);
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 21: DecompositionResult - кэширование
+TEST(DecompositionTest, DecompositionResultCaches) {
+    std::cout << "Test 21: DecompositionResult caches\n";
+    
+    Decomposer::Parameters params;
+    params.polynomial_degree = 4;
+    params.interval_start = 0.0;
+    params.interval_end = 10.0;
+    params.interp_nodes = {
+        InterpolationNode(1.0, 2.0),
+        InterpolationNode(2.0, 3.0),
+        InterpolationNode(3.0, 5.0)
+    };
+    
+    DecompositionResult result = Decomposer::decompose(params);
+    ASSERT_TRUE(result.is_valid());
+    
+    std::vector<double> points_x = {0.0, 4.0, 5.0, 6.0};
+    std::vector<double> points_y = {7.0, 8.0, 9.0};
+    
+    result.build_caches(points_x, points_y);
+    
+    EXPECT_TRUE(result.caches_built);
+    EXPECT_EQ(result.cache_W_x.size(), points_x.size());
+    EXPECT_EQ(result.cache_W_y.size(), points_y.size());
+    EXPECT_EQ(result.cache_W1_x.size(), points_x.size());
+    EXPECT_EQ(result.cache_W1_y.size(), points_y.size());
+    EXPECT_EQ(result.cache_W2_x.size(), points_x.size());
+    EXPECT_EQ(result.cache_W2_y.size(), points_y.size());
+    
+    result.clear_caches();
+    EXPECT_FALSE(result.caches_built);
+    EXPECT_TRUE(result.cache_W_x.empty());
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 22: DecompositionResult - verify_interpolation
+TEST(DecompositionTest, DecompositionResultVerifyInterpolation) {
+    std::cout << "Test 22: DecompositionResult verify_interpolation\n";
+    
+    Decomposer::Parameters params;
+    params.polynomial_degree = 5;
+    params.interval_start = 0.0;
+    params.interval_end = 10.0;
+    params.interp_nodes = {
+        InterpolationNode(1.0, 2.5),
+        InterpolationNode(3.0, 4.2),
+        InterpolationNode(5.0, 6.1)
+    };
+    
+    DecompositionResult result = Decomposer::decompose(params);
+    ASSERT_TRUE(result.is_valid());
+    
+    // Проверяем, что интерполяционные условия выполняются (Q=0)
+    EXPECT_TRUE(result.verify_interpolation(1e-10));
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 23: WeightMultiplier - случай m=0
+TEST(DecompositionTest, WeightMultiplierZeroRoots) {
+    std::cout << "Test 23: WeightMultiplier with zero roots (m=0)\n";
+    
+    WeightMultiplier wm;
+    wm.build_from_roots({});
+    
+    EXPECT_EQ(wm.degree(), 0);
+    EXPECT_EQ(wm.coeffs.size(), 1u);
+    EXPECT_NEAR(wm.coeffs[0], 1.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate(5.0), 1.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(5.0, 1), 0.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(5.0, 2), 0.0, 1e-10);
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 24: WeightMultiplier - случай m=1
+TEST(DecompositionTest, WeightMultiplierSingleRoot) {
+    std::cout << "Test 24: WeightMultiplier with single root (m=1)\n";
+    
+    WeightMultiplier wm;
+    wm.build_from_roots({2.5});
+    
+    EXPECT_EQ(wm.degree(), 1);
+    EXPECT_EQ(wm.coeffs.size(), 2u);
+    EXPECT_NEAR(wm.coeffs[0], 1.0, 1e-10);
+    EXPECT_NEAR(wm.coeffs[1], -2.5, 1e-10);
+    
+    EXPECT_NEAR(wm.evaluate(2.5), 0.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate(0.0), -2.5, 1e-10);
+    
+    // W'(x) = 1 (постоянная)
+    EXPECT_NEAR(wm.evaluate_derivative(0.0, 1), 1.0, 1e-10);
+    EXPECT_NEAR(wm.evaluate_derivative(2.5, 1), 1.0, 1e-10);
+    
+    // W''(x) = 0
+    EXPECT_NEAR(wm.evaluate_derivative(0.0, 2), 0.0, 1e-10);
+    
+    std::cout << "  PASSED\n";
+}
+
+// Тест 25: DecompositionResult - evaluate с разными Q
+TEST(DecompositionTest, DecompositionResultEvaluate) {
+    std::cout << "Test 25: DecompositionResult evaluate\n";
+    
+    Decomposer::Parameters params;
+    params.polynomial_degree = 4;
+    params.interval_start = 0.0;
+    params.interval_end = 10.0;
+    params.interp_nodes = {
+        InterpolationNode(1.0, 2.0),
+        InterpolationNode(2.0, 3.0)
+    };
+    
+    DecompositionResult result = Decomposer::decompose(params);
+    ASSERT_TRUE(result.is_valid());
+    
+    // Q(x) = 1 + 2x (n_free = 3, добавляем коэффициент при x^2 = 0)
+    std::vector<double> q_coeffs = {1.0, 2.0, 0.0};
+    
+    // Проверяем, что F(z_e) = f(z_e) для узлов интерполяции
+    for (const auto& node : params.interp_nodes) {
+        double F_val = result.evaluate(node.x, q_coeffs);
+        EXPECT_NEAR(F_val, node.value, 1e-8);
+    }
+    
+    std::cout << "  PASSED\n";
+}
+

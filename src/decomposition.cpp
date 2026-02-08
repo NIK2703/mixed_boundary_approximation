@@ -13,14 +13,17 @@ namespace mixed_approx {
 
 double WeightMultiplier::evaluate(double x) const {
     if (use_direct_evaluation) {
-        // Прямое вычисление через произведение (x - z_e)
+        // Прямое вычисление через произведение (x - z_e) в нормализованных координатах
+        double x_norm = (x - shift) / scale;
         double result = 1.0;
-        for (double root : roots) {
-            result *= (x - root);
+        for (double root : roots_norm) {
+            result *= (x_norm - root);
         }
+        // Масштабируем обратно: W(x) = W_norm(x_norm) * scale^m
+        result *= std::pow(scale, static_cast<double>(roots.size()));
         return result;
     } else {
-        // Использование коэффициентов полинома (если построен)
+        // Использование коэффициентов полинома (в исходных координатах)
         if (coeffs.empty()) {
             throw std::runtime_error("WeightMultiplier: coefficients not built");
         }
@@ -33,7 +36,128 @@ double WeightMultiplier::evaluate(double x) const {
     }
 }
 
-void WeightMultiplier::build_from_roots(const std::vector<double>& roots_vec) {
+double WeightMultiplier::evaluate_derivative(double x, int order) const {
+    if (order < 1 || order > 2) {
+        throw std::invalid_argument("WeightMultiplier::evaluate_derivative: order must be 1 or 2");
+    }
+    
+    int m = degree();
+    if (m == 0) {
+        return 0.0;  // W(x) = 1, производная = 0
+    }
+    
+    // Преобразуем в нормализованные координаты, если нужно
+    double x_work = x;
+    if (is_normalized && scale != 0.0) {
+        x_work = (x - shift) / scale;
+    }
+    
+    const std::vector<double>& working_roots = is_normalized ? roots_norm : roots;
+    
+    // Проверяем, совпадает ли x_work с каким-либо корнем (для простых корней)
+    bool at_root = false;
+    int root_index = -1;
+    for (size_t i = 0; i < working_roots.size(); ++i) {
+        if (std::abs(x_work - working_roots[i]) < 1e-12) {
+            at_root = true;
+            root_index = static_cast<int>(i);
+            break;
+        }
+    }
+    
+    if (at_root && order == 1) {
+        // Вычисляем W'(z_e) аналитически: W'(z_e) = ∏_{k≠e} (z_e - z_k)
+        double result = 1.0;
+        for (size_t k = 0; k < working_roots.size(); ++k) {
+            if (static_cast<int>(k) == root_index) continue;
+            result *= (x_work - working_roots[k]);
+        }
+        // Если нормализация, применяем масштаб: W'(x) = W_norm'(x_norm) * scale^{m-1}
+        if (is_normalized) {
+            result *= std::pow(scale, static_cast<double>(m - 1));
+        }
+        return result;
+    }
+    
+    if (at_root && order == 2) {
+        // W''(z_e) = 2 * (∏_{j≠e} (z_e - z_j)) * (Σ_{j≠e} 1/(z_e - z_j))
+        double P = 1.0;  // произведение (z_e - z_j) для j≠e
+        double S = 0.0;  // сумма 1/(z_e - z_j) для j≠e
+        for (size_t k = 0; k < working_roots.size(); ++k) {
+            if (static_cast<int>(k) == root_index) continue;
+            double diff = x_work - working_roots[k];
+            P *= diff;
+            S += 1.0 / diff;
+        }
+        double result = 2.0 * P * S;
+        if (is_normalized) {
+            result *= std::pow(scale, static_cast<double>(m - 2));
+        }
+        return result;
+    }
+    
+    // Обычный случай (x не совпадает с корнями)
+    if (order == 1) {
+        // W'(x) = W(x) * Σ_{e=1..m} 1/(x - z_e)
+        double W_val = 1.0;
+        double sum_inv = 0.0;
+        
+        for (double root : working_roots) {
+            double diff = x_work - root;
+            W_val *= diff;
+            sum_inv += 1.0 / diff;
+        }
+        
+        double result = W_val * sum_inv;
+        
+        // Если нормализация была, применяем цепное правило
+        if (is_normalized) {
+            result *= std::pow(scale, static_cast<double>(m - 1));
+        }
+        
+        return result;
+    } else { // order == 2
+        // W''(x) = W(x) * ([Σ 1/(x - z_e)]² - Σ 1/(x - z_e)²)
+        double W_val = 1.0;
+        double sum_inv = 0.0;
+        double sum_inv2 = 0.0;
+        
+        for (double root : working_roots) {
+            double diff = x_work - root;
+            W_val *= diff;
+            double inv = 1.0 / diff;
+            sum_inv += inv;
+            sum_inv2 += inv * inv;
+        }
+        
+        double result = W_val * (sum_inv * sum_inv - sum_inv2);
+        
+        // Нормализация
+        if (is_normalized) {
+            result *= std::pow(scale, static_cast<double>(m - 2));
+        }
+        
+        return result;
+    }
+}
+
+void WeightMultiplier::build_from_roots(const std::vector<double>& roots_vec,
+                                        double interval_start,
+                                        double interval_end,
+                                        bool enable_normalization) {
+    if (roots_vec.empty()) {
+        // Специальный случай: m = 0
+        roots.clear();
+        roots_norm.clear();
+        coeffs = {1.0};
+        min_root_distance = 0.0;
+        use_direct_evaluation = false;
+        is_normalized = false;
+        shift = 0.0;
+        scale = 1.0;
+        return;
+    }
+    
     roots = roots_vec;
     std::sort(roots.begin(), roots.end());
     
@@ -49,12 +173,45 @@ void WeightMultiplier::build_from_roots(const std::vector<double>& roots_vec) {
         min_root_distance = 0.0;
     }
     
-    // Строим коэффициенты полинома W(x) = ∏(x - z_e)
+    // Определяем, требуется ли нормализация
+    is_normalized = false;
+    shift = 0.0;
+    scale = 1.0;
+    
+    if (enable_normalization) {
+        double interval_length = interval_end - interval_start;
+        if (interval_length > 0) {
+            // Оценим разброс корней
+            double min_root = *std::min_element(roots.begin(), roots.end());
+            double max_root = *std::max_element(roots.begin(), roots.end());
+            double range = max_root - min_root;
+            double max_abs = std::max(std::abs(min_root), std::abs(max_root));
+            
+            // Если разброс слишком большой или корни далеко от нуля, нормализуем
+            // Используем более агрессивный порог для тестов
+            if (range > 0.1 * interval_length || max_abs > 2.0 * interval_length) {
+                is_normalized = true;
+                shift = (interval_start + interval_end) / 2.0;
+                scale = interval_length / 2.0;
+            }
+        }
+    }
+    
+    // Нормализуем корни если нужно
+    if (is_normalized) {
+        roots_norm.resize(roots.size());
+        for (size_t i = 0; i < roots.size(); ++i) {
+            roots_norm[i] = (roots[i] - shift) / scale;
+        }
+    }
+    
+    // Строим коэффициенты полинома W(x) = ∏(x - z_e) В ИСХОДНЫХ КООРДИНАТАХ
     int m = static_cast<int>(roots.size());
     coeffs.clear();
     coeffs.resize(m + 1, 0.0);
     coeffs[0] = 1.0;  // старший коэффициент = 1
     
+    // Умножаем на линейные множители используя ИСХОДНЫЕ корни
     for (double root : roots) {
         // Умножаем текущий полином на (x - root)
         // Проходим с конца к началу, чтобы не перезаписывать
@@ -64,7 +221,136 @@ void WeightMultiplier::build_from_roots(const std::vector<double>& roots_vec) {
         // coeffs[0] остаётся 1.0
     }
     
-    use_direct_evaluation = false;
+    // Если нормализация включена, используем прямое вычисление через нормализованные корни
+    // Иначе используем коэффициенты
+    use_direct_evaluation = is_normalized;
+    caches_ready = false;
+}
+
+bool WeightMultiplier::verify_construction(double tolerance) const {
+    int m = degree();
+    if (m == 0) {
+        return coeffs.size() == 1 && std::abs(coeffs[0] - 1.0) < tolerance;
+    }
+    
+    // 1. Проверка моничности: старший коэффициент должен быть 1
+    if (coeffs.empty() || std::abs(coeffs[0] - 1.0) > tolerance) {
+        return false;
+    }
+    
+    // 2. Проверка W(z_e) ≈ 0 для всех корней
+    for (size_t i = 0; i < roots.size(); ++i) {
+        double z_e = roots[i];
+        double W_at_z = evaluate(z_e);
+        // Допуск должен масштабироваться со степенью полинома
+        double abs_tol = tolerance * std::max(1.0, std::pow(std::abs(z_e), static_cast<double>(m)));
+        if (std::abs(W_at_z) > abs_tol) {
+            return false;
+        }
+    }
+    
+    // 3. Проверка согласованности представлений (коэффициенты vs прямое вычисление)
+    if (!coeffs.empty()) {
+        // Сравним вычисленные коэффициенты с прямым перемножением для нескольких случайных точек
+        std::vector<double> test_points = {0.0, 0.5, 1.0, -0.5, -1.0};
+        for (double x : test_points) {
+            double val_coeffs = 0.0;
+            for (double coeff : coeffs) {
+                val_coeffs = val_coeffs * x + coeff;
+            }
+            double val_direct = 1.0;
+            for (double root : roots) {
+                val_direct *= (x - root);
+            }
+            if (std::abs(val_coeffs - val_direct) > tolerance * std::max(1.0, std::abs(val_direct))) {
+                return false;
+            }
+        }
+    }
+    
+    return true;
+}
+
+void WeightMultiplier::build_caches(const std::vector<double>& points_x,
+                                    const std::vector<double>& points_y) {
+    cache_x_vals.clear();
+    cache_x_deriv1.clear();
+    cache_x_deriv2.clear();
+    cache_y_vals.clear();
+    cache_y_deriv1.clear();
+    cache_y_deriv2.clear();
+    
+    // Кэшируем для точек x_i
+    for (double x : points_x) {
+        cache_x_vals.push_back(evaluate(x));
+        cache_x_deriv1.push_back(evaluate_derivative(x, 1));
+        cache_x_deriv2.push_back(evaluate_derivative(x, 2));
+    }
+    
+    // Кэшируем для точек y_j
+    for (double y : points_y) {
+        cache_y_vals.push_back(evaluate(y));
+        cache_y_deriv1.push_back(evaluate_derivative(y, 1));
+        cache_y_deriv2.push_back(evaluate_derivative(y, 2));
+    }
+    
+    caches_ready = true;
+}
+
+void WeightMultiplier::clear_caches() {
+    cache_x_vals.clear();
+    cache_x_deriv1.clear();
+    cache_x_deriv2.clear();
+    cache_y_vals.clear();
+    cache_y_deriv1.clear();
+    cache_y_deriv2.clear();
+    caches_ready = false;
+}
+
+std::vector<double> WeightMultiplier::multiply_by_Q(const std::vector<double>& q_coeffs) const {
+    if (coeffs.empty()) {
+        throw std::runtime_error("WeightMultiplier: coefficients not built");
+    }
+    if (q_coeffs.empty()) {
+        return {};  // Q(x) = 0
+    }
+    
+    int deg_W = degree();
+    int deg_Q = static_cast<int>(q_coeffs.size()) - 1;
+    int deg_result = deg_W + deg_Q;
+    
+    std::vector<double> result(deg_result + 1, 0.0);
+    
+    // Свёртка коэффициентов: result[k] = Σ_{i+j=k} q_i * w_j
+    // q_coeffs заданы в порядке убывания степеней: [q_{deg_Q}, ..., q_0]
+    // coeffs заданы в порядке убывания степеней: [w_{deg_W}=1, ..., w_0]
+    // result будет в порядке убывания степеней: [r_{deg_result}, ..., r_0]
+    
+    for (int i = 0; i <= deg_Q; ++i) {
+        for (int j = 0; j <= deg_W; ++j) {
+            int k = i + j;
+            result[k] += q_coeffs[i] * coeffs[j];
+        }
+    }
+    
+    return result;
+}
+
+double WeightMultiplier::evaluate_product(double x, const std::vector<double>& q_coeffs) const {
+    if (q_coeffs.empty()) {
+        return 0.0;
+    }
+    
+    // Вычисляем Q(x) по схеме Горнера
+    double q_val = 0.0;
+    for (double coeff : q_coeffs) {
+        q_val = q_val * x + coeff;
+    }
+    
+    // Вычисляем W(x)
+    double w_val = evaluate(x);
+    
+    return q_val * w_val;
 }
 
 // ============== InterpolationBasis implementation ==============
@@ -722,20 +1008,75 @@ double DecompositionResult::evaluate(double x, const std::vector<double>& q_coef
     // Вычисляем P_int(x)
     double p_int_val = interpolation_basis.evaluate(x);
     
-    // Вычисляем W(x)
-    double w_val = weight_multiplier.evaluate(x);
+    // Вычисляем Q(x)·W(x) через weight_multiplier
+    double qw_val = weight_multiplier.evaluate_product(x, q_coeffs);
     
-    // Вычисляем Q(x)
-    double q_val = 0.0;
-    int n_free = q_coeffs.size();
-    for (int i = 0; i < n_free; ++i) {
-        // q_coeffs[i] соответствует коэффициенту при x^{n_free-1-i}
-        // Но для вычисления значения удобнее хранить в порядке возрастания степеней
-        // Принимаем, что q_coeffs заданы в порядке [q_{n_free-1}, ..., q_0]
-        q_val = q_val * x + q_coeffs[n_free - 1 - i];
+    return p_int_val + qw_val;
+}
+
+void DecompositionResult::build_caches(const std::vector<double>& points_x,
+                                       const std::vector<double>& points_y) {
+    if (!metadata.is_valid) {
+        throw std::invalid_argument("Cannot build caches from invalid decomposition: " + metadata.validation_message);
     }
     
-    return p_int_val + q_val * w_val;
+    clear_caches();
+    
+    // Кэшируем значения W, W', W'' для точек x_i
+    for (size_t i = 0; i < points_x.size(); ++i) {
+        double x = points_x[i];
+        cache_W_x.push_back(weight_multiplier.evaluate(x));
+        cache_W1_x.push_back(weight_multiplier.evaluate_derivative(x, 1));
+        cache_W2_x.push_back(weight_multiplier.evaluate_derivative(x, 2));
+    }
+    
+    // Кэшируем значения W, W', W'' для точек y_j
+    for (size_t i = 0; i < points_y.size(); ++i) {
+        double y = points_y[i];
+        cache_W_y.push_back(weight_multiplier.evaluate(y));
+        cache_W1_y.push_back(weight_multiplier.evaluate_derivative(y, 1));
+        cache_W2_y.push_back(weight_multiplier.evaluate_derivative(y, 2));
+    }
+    
+    caches_built = true;
+}
+
+void DecompositionResult::clear_caches() {
+    cache_W_x.clear();
+    cache_W_y.clear();
+    cache_W1_x.clear();
+    cache_W1_y.clear();
+    cache_W2_x.clear();
+    cache_W2_y.clear();
+    caches_built = false;
+}
+
+bool DecompositionResult::verify_interpolation(double tolerance) const {
+    if (!metadata.is_valid) {
+        return false;
+    }
+    
+    // Проверяем интерполяционные условия: F(z_e) = f(z_e)
+    // Берем узлы из interpolation_basis (они уже отсортированы и обработаны)
+    for (size_t i = 0; i < interpolation_basis.nodes.size(); ++i) {
+        double z_e = interpolation_basis.nodes[i];
+        double f_z = interpolation_basis.values[i];
+        
+        // Преобразуем обратно в исходные координаты, если узлы нормализованы
+        if (interpolation_basis.is_normalized) {
+            z_e = z_e * interpolation_basis.x_scale + interpolation_basis.x_center;
+        }
+        
+        // Вычисляем F(z_e) с q_coeffs = 0 (т.е. F = P_int)
+        std::vector<double> q_zero(metadata.n_free, 0.0);
+        double F_at_z = evaluate(z_e, q_zero);
+        
+        if (std::abs(F_at_z - f_z) > tolerance * std::max(1.0, std::abs(f_z))) {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 // ============== Decomposer implementation ==============
@@ -823,17 +1164,28 @@ DecompositionResult Decomposer::decompose(const Parameters& params) {
     // Сортируем узлы и значения
     InterpolationBasis::sort_nodes_and_values(nodes, values);
     
-    // 6. Строим весовой множитель W(x)
-    result.weight_multiplier.build_from_roots(nodes);
+    // 6. Строим весовой множитель W(x) с нормализацией
+    result.weight_multiplier.build_from_roots(
+        nodes,
+        params.interval_start,
+        params.interval_end,
+        true  // enable_normalization
+    );
     result.metadata.min_root_distance = result.weight_multiplier.min_root_distance;
+    result.metadata.requires_normalization = result.weight_multiplier.is_normalized;
     
-    // 7. Оценка масштаба
+    if (result.metadata.requires_normalization) {
+        result.metadata.validation_message +=
+            "\nInfo: Weight multiplier was normalized (shift=" + std::to_string(result.weight_multiplier.shift) +
+            ", scale=" + std::to_string(result.weight_multiplier.scale) + ").";
+    }
+    
+    // 7. Оценка масштаба (дополнительная проверка)
     double scale_W = estimate_weight_multiplier_scale(nodes);
     if (scale_W > 1e150 || scale_W < 1e-150) {
-        result.metadata.requires_normalization = true;
         result.metadata.validation_message +=
-            "\nWarning: Weight multiplier scale is " + std::to_string(scale_W) +
-            ". Consider coordinate normalization.";
+            "\nWarning: Weight multiplier has extreme scale: " + std::to_string(scale_W) +
+            ". This may cause numerical issues.";
     }
     
     // 8. Строим базисный интерполяционный полином P_int(x) с расширенными возможностями
