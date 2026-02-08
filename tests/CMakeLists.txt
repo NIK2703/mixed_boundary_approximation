@@ -159,3 +159,13 @@ target_link_libraries(test_step_2_1_8
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_2_1_8)
+
+# Тест шага 2.1.9 - интеграция параметризации с оптимизацией
+add_executable(test_step_2_1_9
+    test_step_2_1_9.cpp
+)
+target_link_libraries(test_step_2_1_9
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_2_1_9)

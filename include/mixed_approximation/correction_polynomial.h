@@ -167,7 +167,29 @@ struct CorrectionPolynomial {
                               const WeightMultiplier& W);
     
     /**
-     * @brief Установка параметра регуляризации λ
+     * @brief Получение элемента матрицы жёсткости K[k][l]
+     * @param k индекс строки
+     * @param l индекс столбца
+     * @return значение K[k][l] или 0, если индексы вне диапазона
+     */
+    double get_stiffness_element(int k, int l) const {
+        if (!stiffness_matrix_computed || k < 0 || l < 0 || 
+            k >= static_cast<int>(stiffness_matrix.size()) || 
+            l >= static_cast<int>(stiffness_matrix.size())) {
+            return 0.0;
+        }
+        return stiffness_matrix[k][l];
+    }
+    
+    /**
+     * @brief Получение типа базиса
+     * @return тип базиса
+     */
+    BasisType get_basis_type() const { return basis_type; }
+    
+    /**
+     * @brief Установка параметра регуляризации
+     * @param lambda новое значение lambda
      */
     void set_regularization_lambda(double lambda) { regularization_lambda = lambda; }
     
