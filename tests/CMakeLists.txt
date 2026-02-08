@@ -61,7 +61,7 @@ target_link_libraries(test_decomposition
 )
 gtest_discover_tests(test_decomposition)
 
-# Интеграционные тесты
+# Интеграционные тесты - основной файл
 add_executable(test_integration
     integration/test_integration.cpp
 )
@@ -70,6 +70,16 @@ target_link_libraries(test_integration
     GTest::gtest_main
 )
 gtest_discover_tests(test_integration)
+
+# Интеграционные тесты - шаг 2.1
+add_executable(test_step_2_1_integration
+    integration/test_step_2_1_integration.cpp
+)
+target_link_libraries(test_step_2_1_integration
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_2_1_integration)
 
 # Weight Multiplier (шаг 2.1.3)
 add_executable(test_weight_multiplier
@@ -100,6 +110,7 @@ add_executable(test_all
     validator/test_validator_advanced.cpp
     decomposition/test_decomposition.cpp
     integration/test_integration.cpp
+    integration/test_step_2_1_integration.cpp
     weight_multiplier/test_weight_multiplier.cpp
     interpolation_basis/test_interpolation_basis.cpp
     test_step_2_1_1.cpp
