@@ -180,3 +180,13 @@ target_link_libraries(test_step_2_1_9
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_2_1_9)
+
+# Тест шага 3.1.1 - ConstrainedPolynomial
+add_executable(test_step_3_1_1
+    test_step_3_1_1.cpp
+)
+target_link_libraries(test_step_3_1_1
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_3_1_1)

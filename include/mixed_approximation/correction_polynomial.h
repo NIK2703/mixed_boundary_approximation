@@ -4,20 +4,13 @@
 #include "types.h"
 #include "weight_multiplier.h"
 #include "interpolation_basis.h"
+#include "i_polynomial.h"
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <cmath>
 
 namespace mixed_approx {
-
-/**
- * @brief Тип базиса для корректирующего полинома Q(x)
- */
-enum class BasisType {
-    MONOMIAL,       ///< Мономиальный базис: 1, x, x^2, ...
-    CHEBYSHEV       ///< Ортогональный базис Чебышёва: T_0(t), T_1(t), ...
-};
 
 /**
  * @brief Метод инициализации коэффициентов корректирующего полинома

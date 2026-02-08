@@ -66,6 +66,7 @@ add_library(mixed_approximation
     src/convergence_monitor.cpp
     src/initialization_strategy.cpp
     src/optimization_post_processor.cpp
+    src/constrained_polynomial.cpp
 )
 
 target_include_directories(mixed_approximation
