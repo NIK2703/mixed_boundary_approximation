@@ -170,9 +170,11 @@ double CompositePolynomial::evaluate_derivative(double x, int order) const {
     double w2_val = (order == 2) ? weight_multiplier.evaluate_derivative(x, 2) : 0.0;
     
     if (order == 1) {
-        return p_int_val + q1_val * w_val + q_val * w1_val;
+        double result = p_int_val + q1_val * w_val + q_val * w1_val;
+        return result;
     } else {
-        return p_int_val + q2_val * w_val + 2.0 * q1_val * w1_val + q_val * w2_val;
+        double result = p_int_val + q2_val * w_val + 2.0 * q1_val * w1_val + q_val * w2_val;
+        return result;
     }
 }
 
@@ -206,33 +208,30 @@ bool CompositePolynomial::build_analytic_coefficients(int max_degree_for_analyti
         return false;
     }
     
-    // Получаем коэффициенты W(x) и Q(x)
-    std::vector<double> w_coeffs = weight_multiplier.coeffs;
-    std::vector<double> q_coeffs = correction_poly.coeffs;
-    
-    // Преобразуем q_coeffs из порядка возрастания степеней в порядок убывания
-    std::vector<double> q_coeffs_desc;
-    if (!q_coeffs.empty()) {
-        q_coeffs_desc.resize(q_coeffs.size());
-        for (size_t i = 0; i < q_coeffs.size(); ++i) {
-            q_coeffs_desc[q_coeffs.size() - 1 - i] = q_coeffs[i];
-        }
-    }
+    // Получаем коэффициенты W(x) и Q(x) в порядке возрастания степеней [a_0, a_1, ..., a_n]
+    std::vector<double> w_coeffs = weight_multiplier.get_coeffs_ascending();
+    std::vector<double> q_coeffs = correction_poly.coeffs;  // уже в ascending order
     
     // Вычисляем коэффициенты Q(x)·W(x) через свёртку
     std::vector<double> qw_coeffs;
-    if (q_coeffs_desc.empty() || q_coeffs_desc[0] == 0.0 && q_coeffs_desc.size() == 1) {
+    if (q_coeffs.empty() || q_coeffs.size() == 1 && q_coeffs[0] == 0.0) {
         // Q(x) = 0
         qw_coeffs.clear();
     } else {
-        qw_coeffs = convolve_coefficients(q_coeffs_desc, w_coeffs);
+        qw_coeffs = convolve_coefficients(q_coeffs, w_coeffs);
     }
     
+    std::cout << "    [DEBUG build_analytic] QW coeffs (" << qw_coeffs.size() << "): ";
+    for (double c : qw_coeffs) std::cout << c << " "; std::cout << "\n";
+    
     // Складываем: F_coeffs = P_int_coeffs + QW_coeffs
-    int result_size = std::max(
-        p_int_coeffs.empty() ? 0 : static_cast<int>(p_int_coeffs.size()),
-        qw_coeffs.empty() ? 0 : static_cast<int>(qw_coeffs.size())
-    );
+    // P_int_coeffs = [a_0, a_1, ..., a_p] — младшие степени (x^0, x^1, ...)
+    // QW_coeffs = [b_0, b_1, ..., b_q] — младшие степени (x^0, x^1, ...)
+    // Результат = [a_0+b_0, a_1+b_1, ...] + остаток от более длинного вектора
+    
+    int p_int_size = static_cast<int>(p_int_coeffs.size());
+    int qw_size = static_cast<int>(qw_coeffs.size());
+    int result_size = std::max(p_int_size, qw_size);
     
     if (result_size == 0) {
         analytic_coeffs = {0.0};
@@ -241,28 +240,22 @@ bool CompositePolynomial::build_analytic_coefficients(int max_degree_for_analyti
         return true;
     }
     
-    analytic_coeffs.assign(result_size, 0.0);
+    analytic_coeffs.resize(result_size, 0.0);
     
-    // Добавляем P_int
-    if (!p_int_coeffs.empty()) {
-        int offset = result_size - static_cast<int>(p_int_coeffs.size());
-        for (size_t i = 0; i < p_int_coeffs.size(); ++i) {
-            analytic_coeffs[offset + i] += p_int_coeffs[i];
-        }
+    // Добавляем P_int_coeffs в начало
+    for (int i = 0; i < p_int_size; ++i) {
+        analytic_coeffs[i] += p_int_coeffs[i];
     }
     
-    // Добавляем Q*W
-    if (!qw_coeffs.empty()) {
-        int offset = result_size - static_cast<int>(qw_coeffs.size());
-        for (size_t i = 0; i < qw_coeffs.size(); ++i) {
-            analytic_coeffs[offset + i] += qw_coeffs[i];
-        }
+    // Добавляем QW_coeffs в начало
+    for (int i = 0; i < qw_size; ++i) {
+        analytic_coeffs[i] += qw_coeffs[i];
     }
     
-    // Удаляем старшие нули
+    // Удаляем старшие нули (с конца массива, т.к. это ascending order [a_0, a_1, ..., a_n])
     while (analytic_coeffs.size() > 1 && 
-           std::abs(analytic_coeffs[0]) < std::numeric_limits<double>::epsilon() * 1e6) {
-        analytic_coeffs.erase(analytic_coeffs.begin());
+           std::abs(analytic_coeffs.back()) < 1e-14) {
+        analytic_coeffs.pop_back();
     }
     
     analytic_coeffs_valid = true;
@@ -277,10 +270,12 @@ double CompositePolynomial::evaluate_analytic(double x) const {
         throw std::runtime_error("Analytic coefficients not available. Call build_analytic_coefficients first.");
     }
     
-    // Схема Горнера
+    // Коэффициенты в ascending order [a_0, a_1, ..., a_n], где P(x) = a_0 + a_1*x + ... + a_n*x^n
+    // Коэффициенты строятся в исходных координатах (через nodes_original), поэтому x не преобразуется
+    // Вычисляем: result = a_n + a_{n-1}*x + ... + a_0*x^n (степени растут)
     double result = 0.0;
-    for (double coeff : analytic_coeffs) {
-        result = result * x + coeff;
+    for (int i = static_cast<int>(analytic_coeffs.size()) - 1; i >= 0; --i) {
+        result = result * x + analytic_coeffs[i];
     }
     return result;
 }
@@ -422,18 +417,30 @@ double CompositePolynomial::compute_regularization_term(double gamma) const {
 
 bool CompositePolynomial::verify_assembly(double tolerance) {
     // Проверяем интерполяционные условия: F(z_e) ≈ f(z_e)
-    for (const auto& node : interpolation_basis.nodes) {
-        double F_val = evaluate(node);
-        // Находим соответствующее значение f(z_e)
-        // (Примечание: nodes_normalized соответствуют исходным nodes через нормализацию)
-    }
+    // Исходные узлы хранятся в interpolation_basis.values (значения f(z_e))
+    // Интерполяционные узлы z_e находятся через weight_multiplier.roots
     
-    // Более прямая проверка: W(z_e) должен быть близок к нулю
     if (num_constraints > 0) {
+        // Проверяем W(z_e) ≈ 0
         for (double root : weight_multiplier.roots) {
             double W_val = weight_multiplier.evaluate(root);
             if (std::abs(W_val) > tolerance) {
                 validation_message = "W(z_e) not close to zero at z_e = " + std::to_string(root);
+                return false;
+            }
+        }
+        
+        // Проверяем F(z_e) ≈ f(z_e)
+        // Нам нужно найти соответствующее значение f(z_e) для каждого корня
+        // Корни weight_multiplier могут отличаться от узлов interpolation_basis (порядок, нормализация)
+        // Используем evaluate(z_e) напрямую и сравниваем с базисным полиномом
+        for (double z_e : weight_multiplier.roots) {
+            double F_val = evaluate(z_e);
+            double P_int_val = interpolation_basis.evaluate(z_e);
+            double abs_tol = tolerance * std::max(1.0, std::abs(P_int_val));
+            if (std::abs(F_val - P_int_val) > abs_tol) {
+                validation_message = "Interpolation condition failed at z_e = " + std::to_string(z_e) + 
+                                    ": F=" + std::to_string(F_val) + ", P_int=" + std::to_string(P_int_val);
                 return false;
             }
         }
@@ -559,20 +566,24 @@ bool CompositePolynomial::is_valid() const {
 }
 
 std::vector<double> CompositePolynomial::extract_p_int_coefficients() const {
-    // Для малого числа узлов используем прямое раскрытие формулы Лагранжа
-    // Для большого числа узлов используем численное решение
+    // Возвращаем коэффициенты в порядке возрастания степеней [a_0, a_1, ..., a_n]
+    // ВАЖНО: используем nodes_original чтобы коэффициенты были в исходных координатах,
+    // соответствующих Q(x) и W(x)
     
     // Проверяем, доступны ли узлы и значения
-    if (interpolation_basis.nodes.empty() || interpolation_basis.values.empty()) {
+    if (interpolation_basis.nodes_original.empty() || interpolation_basis.values.empty()) {
         // P_int(x) = 0
         return std::vector<double>();
     }
     
-    int m = static_cast<int>(interpolation_basis.nodes.size());
+    // Используем nodes_original для вычисления коэффициентов в исходных координатах
+    const std::vector<double>& work_nodes = interpolation_basis.nodes_original;
+    const std::vector<double>& work_values = interpolation_basis.values;
+    int m = static_cast<int>(work_nodes.size());
     
-    // Для небольшого числа узлов вычисляем коэффициенты напрямую
+    // Для небольшого числа узлов вычисляем коэффициенты напрямую через формулу Лагранжа
     if (m <= 8) {
-        std::vector<double> coeffs(m, 0.0);  // Полином степени m-1
+        std::vector<double> coeffs_ascending(m, 0.0);  // [a_0, a_1, ..., a_{m-1}]
         
         for (int j = 0; j < m; ++j) {
             // Строим базисный полином Лагранжа L_j(x)
@@ -581,49 +592,51 @@ std::vector<double> CompositePolynomial::extract_p_int_coefficients() const {
             double denom = 1.0;
             for (int k = 0; k < m; ++k) {
                 if (k == j) continue;
-                denom *= (interpolation_basis.nodes[j] - interpolation_basis.nodes[k]);
+                // Знаменатель для L_j: prod_{k≠j} (z_j - z_k)
+                denom *= (work_nodes[k] - work_nodes[j]);
                 
                 // Умножаем на (x - z_k)
-                std::vector<double> new_L(k + 2, 0.0);
-                for (int i = 0; i < k + 1; ++i) {
-                    new_L[i] -= interpolation_basis.nodes[k] * L_coeff[i];
-                    new_L[i + 1] += L_coeff[i];
+                // L(x) = L_coeff[0] + L_coeff[1]*x + ... + L_coeff[d]*x^d
+                // (x - z_k) * L(x) = -z_k*L_coeff[0] + (L_coeff[0] - z_k*L_coeff[1])*x + ... + (L_coeff[d-1] - z_k*L_coeff[d])*x^d + L_coeff[d]*x^{d+1}
+                double z_k = work_nodes[k];
+                std::vector<double> new_L(L_coeff.size() + 1, 0.0);
+                for (size_t i = 0; i < L_coeff.size(); ++i) {
+                    new_L[i] += -z_k * L_coeff[i];      // коэффициент при x^i
+                    new_L[i + 1] += L_coeff[i];         // коэффициент при x^{i+1}
                 }
                 L_coeff = new_L;
             }
             
             // Делим на denom и добавляем к результату с весом f(z_j)
-            double weight = interpolation_basis.values[j] / denom;
-            if (coeffs.size() < L_coeff.size()) {
-                coeffs.resize(L_coeff.size(), 0.0);
-            }
+            double weight = work_values[j] / denom;
+            
+            // Добавляем в coeffs_ascending
             for (size_t i = 0; i < L_coeff.size(); ++i) {
-                coeffs[coeffs.size() - 1 - i] += weight * L_coeff[L_coeff.size() - 1 - i];
+                coeffs_ascending[i] += weight * L_coeff[i];
             }
         }
         
         // Удаляем старшие нули
-        while (coeffs.size() > 1 && std::abs(coeffs[0]) < 1e-15) {
-            coeffs.erase(coeffs.begin());
+        while (coeffs_ascending.size() > 1 && 
+               std::abs(coeffs_ascending.back()) < 1e-15) {
+            coeffs_ascending.pop_back();
         }
         
-        return coeffs;
+        return coeffs_ascending;
     }
     
     // Для большого числа узлов используем интерполяцию Вандермонда
-    // Строим систему V * a = f, где V[i,j] = z_i^j
-    
-    std::vector<double> nodes = interpolation_basis.nodes;
-    std::vector<double> values = interpolation_basis.values;
+    std::vector<double> nodes = work_nodes;
+    std::vector<double> values = work_values;
     
     int n = m - 1;  // Степень полинома
     
-    // Формируем матрицу Вандермонда и решаем методом Гаусса
+    // Формируем матрицу Вандермонда
     std::vector<std::vector<double>> V(m, std::vector<double>(m));
     for (int i = 0; i < m; ++i) {
         double power = 1.0;
         for (int j = 0; j <= n; ++j) {
-            V[i][j] = power;
+            V[i][j] = power;  // V[i,j] = z_i^j
             power *= nodes[i];
         }
     }
@@ -641,7 +654,7 @@ std::vector<double> CompositePolynomial::extract_p_int_coefficients() const {
         }
         
         if (max_val < 1e-14) {
-            // Сингулярная матрица - возвращаем пустой результат
+            // Сингулярная матрица
             return std::vector<double>();
         }
         
@@ -661,16 +674,16 @@ std::vector<double> CompositePolynomial::extract_p_int_coefficients() const {
     }
     
     // Обратная подстановка
-    std::vector<double> coeffs_desc(m);
+    std::vector<double> coeffs_ascending(m);
     for (int i = m - 1; i >= 0; --i) {
         double sum = values[i];
         for (int j = i + 1; j < m; ++j) {
-            sum -= V[i][j] * coeffs_desc[j];
+            sum -= V[i][j] * coeffs_ascending[j];
         }
-        coeffs_desc[i] = sum / V[i][i];
+        coeffs_ascending[i] = sum / V[i][i];
     }
     
-    return coeffs_desc;
+    return coeffs_ascending;
 }
 
 std::vector<double> CompositePolynomial::convolve_coefficients(const std::vector<double>& q_coeffs,
@@ -692,9 +705,10 @@ std::vector<double> CompositePolynomial::convolve_coefficients(const std::vector
         }
     }
     
-    // Удаляем старшие нули
-    while (result.size() > 1 && std::abs(result[0]) < 1e-14) {
-        result.erase(result.begin());
+    // Удаляем старшие нули (с конца массива, т.к. это ascending order [a_0, a_1, ..., a_n])
+    while (result.size() > 1 && 
+           std::abs(result.back()) < 1e-14) {
+        result.pop_back();
     }
     
     return result;

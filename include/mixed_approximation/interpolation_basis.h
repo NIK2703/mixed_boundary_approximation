@@ -23,7 +23,8 @@ enum class InterpolationMethod {
  */
 struct InterpolationBasis {
     // Исходные данные (нормализованные)
-    std::vector<double> nodes;           // узлы интерполяции (отсортированные, возможно нормализованные)
+    std::vector<double> nodes;           // узлы интерполяции (нормализованные в [-1, 1])
+    std::vector<double> nodes_original;  // исходные узлы интерполяции (до нормализации)
     std::vector<double> values;          // значения f(z_e) в узлах
     int m_eff;                           // эффективное число узлов после объединения близких
     
@@ -141,6 +142,7 @@ private:
     
     // Вычисление производной через разделённые разности (для метода Ньютона)
     double evaluate_newton_derivative(double x) const;
+    double evaluate_newton_second_derivative(double x) const;
     
     // Специальные случаи
     void compute_chebyshev_weights();

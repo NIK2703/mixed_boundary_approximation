@@ -44,6 +44,7 @@ add_library(mixed_approximation
     src/composite_polynomial.cpp
     src/parameterization_verification.cpp
     src/parameterization_data.cpp
+    src/edge_case_handler.cpp
 )
 
 target_include_directories(mixed_approximation

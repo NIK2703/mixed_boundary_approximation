@@ -6,6 +6,7 @@
 #include "weight_multiplier.h"
 #include "correction_polynomial.h"
 #include "composite_polynomial.h"
+#include "edge_case_handler.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -154,6 +155,9 @@ private:
     CorrectionPolynomial correction_;
     CompositePolynomial composite_;
     
+    // Обработчик крайних случаев
+    EdgeCaseHandler edge_case_handler_;
+    
     // Состояние построения
     bool nodes_validated_;
     bool basis_built_;
@@ -237,6 +241,22 @@ public:
      * @return вектор ошибок
      */
     const std::vector<std::string>& get_errors() const { return errors_; }
+    
+    /**
+     * @brief Получение результата обработки крайних случаев
+     * @return копия результата
+     */
+    EdgeCaseHandlingResult get_edge_case_result() const {
+        return edge_case_handler_.get_result();
+    }
+    
+    /**
+     * @brief Проверка наличия критических ошибок
+     * @return true, если есть критические ошибки
+     */
+    bool has_critical_edge_cases() const {
+        return edge_case_handler_.has_critical_errors();
+    }
     
     /**
      * @brief Получение построенной параметризации (move semantics)

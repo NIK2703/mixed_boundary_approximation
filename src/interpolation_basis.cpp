@@ -40,6 +40,7 @@ void InterpolationBasis::build(const std::vector<double>& nodes_vec,
     
     // 1. Копируем исходные данные в члены класса
     nodes = nodes_vec;
+    nodes_original = nodes_vec;  // Сохраняем исходные узлы до нормализации
     values = values_vec;
     
     // 2. Нормализация координат (если включено)
@@ -338,21 +339,46 @@ double InterpolationBasis::evaluate_derivative(double x, int order) const {
         x_norm = (x - x_center) / x_scale;
     }
     
+    double deriv_norm = 0.0;
+    
     if (method == InterpolationMethod::BARYCENTRIC) {
-        return evaluate_barycentric_derivative(x_norm, order);
+        deriv_norm = evaluate_barycentric_derivative(x_norm, order);
+    } else if (method == InterpolationMethod::NEWTON) {
+        // Для NEWTON используем evaluate_newton_derivative которая работает с нормализованными координатами
+        if (order == 1) {
+            deriv_norm = evaluate_newton_derivative(x_norm);
+        } else {
+            deriv_norm = evaluate_newton_second_derivative(x_norm);
+        }
     } else {
+        // Для LAGRANGE используем численное дифференцирование (evaluate работает с x_norm)
         const double h = 1e-6;
         if (order == 1) {
-            double fp = evaluate(x + h);
-            double fm = evaluate(x - h);
-            return (fp - fm) / (2.0 * h);
+            double fp = evaluate(x_norm + h) * x_scale;  // Масштабируем обратно
+            double fm = evaluate(x_norm - h) * x_scale;
+            deriv_norm = (fp - fm) / (2.0 * h);
         } else {
-            double fp = evaluate(x + h);
-            double f = evaluate(x);
-            double fm = evaluate(x - h);
-            return (fp - 2.0 * f + fm) / (h * h);
+            double fp = evaluate(x_norm + h) * x_scale;
+            double f = evaluate(x_norm) * x_scale;
+            double fm = evaluate(x_norm - h) * x_scale;
+            deriv_norm = (fp - 2.0 * f + fm) / (h * h);
         }
     }
+    
+    // Масштабируем производную
+    if (is_normalized) {
+        // x_norm = (x - x_center) / x_scale
+        // dx_norm/dx = 1/x_scale
+        // dF/dx = dF/dx_norm * dx_norm/dx = deriv_norm / x_scale
+        // d²F/dx² = deriv_norm_norm / x_scale²
+        if (order == 1) {
+            return deriv_norm / x_scale;
+        } else {
+            return deriv_norm / (x_scale * x_scale);
+        }
+    }
+    
+    return deriv_norm;
 }
 
 double InterpolationBasis::evaluate_newton_derivative(double x) const {
@@ -380,31 +406,76 @@ double InterpolationBasis::evaluate_newton_derivative(double x) const {
     return deriv;
 }
 
+double InterpolationBasis::evaluate_newton_second_derivative(double x) const {
+    int m = static_cast<int>(nodes.size());
+    if (m < 3) {
+        // Для линейного или константного полинома вторая производная = 0
+        return 0.0;
+    }
+    
+    // Вторая производная полинома Ньютона:
+    // P(x) = Σ_{k=0}^{m-1} dd[k] * ∏_{j=0}^{k-1} (x - z_j)
+    // P'(x) = Σ_{k=1}^{m-1} dd[k] * Σ_{i=0}^{k-1} ∏_{j≠i}^{k-1} (x - z_j)
+    // P''(x) = Σ_{k=2}^{m-1} dd[k] * Σ_{0≤i<l<k} 2 * ∏_{j≠i,l}^{k-1} (x - z_j)
+    //        = 2 * Σ_{k=2}^{m-1} dd[k] * Σ_{0≤i<l<k} ∏_{j≠i,l}^{k-1} (x - z_j)
+    
+    double deriv2 = 0.0;
+    
+    for (int k = 2; k < m; ++k) {
+        // Σ_{0≤i<l<k} ∏_{j≠i,l}^{k-1} (x - z_j)
+        double sum_over_pairs = 0.0;
+        
+        // Перебираем все пары (i, l)
+        for (int i = 0; i < k; ++i) {
+            for (int l = i + 1; l < k; ++l) {
+                // Вычисляем произведение ∏_{j≠i,l}^{k-1} (x - z_j)
+                double prod = 1.0;
+                for (int j = 0; j < k; ++j) {
+                    if (j == i || j == l) continue;
+                    prod *= (x - nodes[j]);
+                }
+                sum_over_pairs += prod;
+            }
+        }
+        
+        deriv2 += 2.0 * divided_differences[k] * sum_over_pairs;
+    }
+    
+    return deriv2;
+}
+
 double InterpolationBasis::evaluate_barycentric_derivative(double x, int order) const {
     int m = static_cast<int>(nodes.size());
     
     // Для m <= 2 барицентрическая формула дает нестабильные результаты
-    // Используем evaluate_newton_derivative как fallback
+    // Используем evaluate_newton_derivative как fallback для первой производной
     if (m <= 2) {
-        return evaluate_newton_derivative(x);
+        if (order == 1) {
+            return evaluate_newton_derivative(x);
+        } else {
+            return evaluate_newton_second_derivative(x);
+        }
     }
     
     for (int k = 0; k < m; ++k) {
         if (std::abs(x - nodes[k]) < 1e-12) {
             // В узлах используем численную производную для устойчивости
             const double h = 1e-8;
-            double fp = evaluate_barycentric(x + h);
-            double fm = evaluate_barycentric(x - h);
-            return (fp - fm) / (2.0 * h);
+            if (order == 1) {
+                double fp = evaluate_barycentric(x + h);
+                double fm = evaluate_barycentric(x - h);
+                return (fp - fm) / (2.0 * h);
+            } else {
+                double fp = evaluate_barycentric(x + h);
+                double f = evaluate_barycentric(x);
+                double fm = evaluate_barycentric(x - h);
+                return (fp - 2.0 * f + fm) / (h * h);
+            }
         }
     }
     
     if (order == 1) {
         // Формула для первой производной в барицентрическом интерполировании:
-        // P'(x) = [Σ w_j*f_j/(x-x_j) * Σ w_k/(x-x_k) - Σ w_j/(x-x_j)^2 * Σ w_k*f_k/(x-x_k)] / (Σ w_k/(x-x_k))^2
-        // = [Σ w_j*f_j/(x-x_j) - P(x) * Σ w_k/(x-x_k)] / (Σ w_k/(x-x_k))^2 * (Σ w_k/(x-x_k))
-        // = [Σ w_j*f_j/(x-x_j) - P(x) * Σ w_k/(x-x_k)] / (Σ w_k/(x-x_k))^2
-        // что эквивалентно: (Σ w_j*f_j/(x-x_j) - P(x) * Σ w_k/(x-x_k)) / (Σ w_k/(x-x_k))^2
         double sum_w_over_dx = 0.0;
         double sum_wf_over_dx = 0.0;
         double sum_w_over_dx2 = 0.0;
@@ -426,15 +497,12 @@ double InterpolationBasis::evaluate_barycentric_derivative(double x, int order) 
             return 0.0;
         }
         
-        // F'(x) = [Σ w_j*f_j/(x-x_j) - P(x) * Σ w_k/(x-x_k)] / (Σ w_k/(x-x_k))^2
         double p_x = evaluate_barycentric(x);
         double numerator = sum_wf_over_dx - p_x * sum_w_over_dx;
         return numerator / denominator;
     } else {
-        const double h = 1e-6;
-        double fp = evaluate_derivative(x + h, 1);
-        double fm = evaluate_derivative(x - h, 1);
-        return (fp - fm) / (2.0 * h);
+        // Для второй производной используем аналитическую формулу через разделенные разности
+        return evaluate_newton_second_derivative(x);
     }
 }
 

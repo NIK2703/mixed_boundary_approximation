@@ -110,6 +110,18 @@ struct WeightMultiplier {
      * @return значение Q(x)·W(x)
      */
     double evaluate_product(double x, const std::vector<double>& q_coeffs) const;
+    
+    /**
+     * @brief Получение коэффициентов в порядке возрастания степеней
+     * @return коэффициенты [w_0, w_1, ..., w_m] для свёртки и других операций
+     */
+    std::vector<double> get_coeffs_ascending() const {
+        if (coeffs.empty()) return {};
+        // coeffs хранится в нисходящем порядке: [w_m, w_{m-1}, ..., w_0]
+        // Нам нужен восходящий порядок: [w_0, w_1, ..., w_m]
+        std::vector<double> result(coeffs.rbegin(), coeffs.rend());
+        return result;
+    }
 };
 
 } // namespace mixed_approx

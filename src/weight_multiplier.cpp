@@ -9,28 +9,20 @@
 namespace mixed_approx {
 
 double WeightMultiplier::evaluate(double x) const {
-    if (use_direct_evaluation) {
-        // Прямое вычисление через произведение (x - z_e) в нормализованных координатах
-        double x_norm = (x - shift) / scale;
-        double result = 1.0;
-        for (double root : roots_norm) {
-            result *= (x_norm - root);
-        }
-        // Масштабируем обратно: W(x) = W_norm(x_norm) * scale^m
-        result *= std::pow(scale, static_cast<double>(roots.size()));
-        return result;
-    } else {
-        // Использование коэффициентов полинома (в исходных координатах)
-        if (coeffs.empty()) {
-            throw std::runtime_error("WeightMultiplier: coefficients not built");
-        }
-        // Используем схему Горнера
-        double result = 0.0;
-        for (double coeff : coeffs) {
-            result = result * x + coeff;
-        }
-        return result;
+    // ВНИМАНИЕ: коэффициенты coeffs строятся в исходных координатах в build_from_roots()
+    // Мы НЕ используем use_direct_evaluation потому что это создаёт несогласованность
+    // между evaluate() и evaluate_analytic() в CompositePolynomial
+    
+    // Использование коэффициентов полинома (в исходных координатах)
+    if (coeffs.empty()) {
+        throw std::runtime_error("WeightMultiplier: coefficients not built");
     }
+    // Используем схему Горнера
+    double result = 0.0;
+    for (double coeff : coeffs) {
+        result = result * x + coeff;
+    }
+    return result;
 }
 
 double WeightMultiplier::evaluate_derivative(double x, int order) const {
@@ -208,7 +200,10 @@ void WeightMultiplier::build_from_roots(const std::vector<double>& roots_vec,
     coeffs[0] = 1.0;  // старший коэффициент = 1
     
     // Умножаем на линейные множители используя ИСХОДНЫЕ корни
-    for (double root : roots) {
+    // coeffs[j] = w_{m-j} (нисходящий порядок)
+    for (int r = 0; r < m; ++r) {
+        double root = roots[r];
+        // Идём с конца чтобы использовать уже вычисленные значения
         for (int i = m - 1; i >= 0; --i) {
             coeffs[i + 1] -= root * coeffs[i];
         }
@@ -308,6 +303,8 @@ std::vector<double> WeightMultiplier::multiply_by_Q(const std::vector<double>& q
     
     std::vector<double> result(deg_result + 1, 0.0);
     
+    // coeffs хранится в восходящем порядке: coeffs[i] = коэффициент при x^i
+    // Например: coeffs = [w_0, w_1, w_2, w_3] где W(x) = w_0 + w_1*x + w_2*x^2 + w_3*x^3
     for (int i = 0; i <= deg_Q; ++i) {
         for (int j = 0; j <= deg_W; ++j) {
             int k = i + j;

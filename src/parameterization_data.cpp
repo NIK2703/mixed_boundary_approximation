@@ -221,6 +221,34 @@ bool ParameterizationBuilder::correct_formulation(ApproximationConfig& config) {
     int n = config.polynomial_degree;
     int m = nodes_.count;
     
+    // Вызов обработчика крайних случаев
+    EdgeCaseHandlingResult edge_result = edge_case_handler_.handle_all_cases(n, m, nodes_.y_values, config);
+    
+    // Логирование обнаруженных случаев
+    for (const auto& case_info : edge_result.detected_cases) {
+        std::ostringstream case_msg;
+        case_msg << "Edge case detected: " << case_info.message << " (Level: ";
+        switch (case_info.level) {
+            case EdgeCaseLevel::CRITICAL: case_msg << "CRITICAL"; break;
+            case EdgeCaseLevel::SPECIAL: case_msg << "SPECIAL"; break;
+            case EdgeCaseLevel::WARNING: case_msg << "WARNING"; break;
+            case EdgeCaseLevel::RECOVERABLE: case_msg << "RECOVERABLE"; break;
+        }
+        case_msg << ")";
+        if (case_info.level == EdgeCaseLevel::CRITICAL || 
+            case_info.level == EdgeCaseLevel::SPECIAL) {
+            add_warning(case_msg.str());
+        } else {
+            log(case_msg.str());
+        }
+    }
+    
+    // Проверка критических ошибок
+    if (!edge_result.success) {
+        add_error("Edge case handling failed");
+        return false;
+    }
+    
     // Проверка: n >= m - 1 (для deg_Q >= 0)
     if (n < m - 1) {
         std::ostringstream oss;
@@ -228,6 +256,16 @@ bool ParameterizationBuilder::correct_formulation(ApproximationConfig& config) {
             << " interpolation nodes. Minimum degree is " << (m - 1);
         add_error(oss.str());
         return false;
+    }
+    
+    // Логирование предупреждений от edge case handler
+    for (const auto& warning : edge_result.warnings) {
+        add_warning(warning);
+    }
+    
+    // Логирование ошибок от edge case handler
+    for (const auto& error : edge_result.errors) {
+        add_error(error);
     }
     
     // Случай m = 0 (отсутствие интерполяционных узлов)
@@ -242,14 +280,19 @@ bool ParameterizationBuilder::correct_formulation(ApproximationConfig& config) {
         add_warning("Full interpolation - approximation and repulsion criteria are inactive");
     }
     
+    // Инициализация корректирующего полинома
     correction_.initialize(n - m, BasisType::MONOMIAL, 
                           config.interval_start, 
                           config.interval_end);
     
-    // Выбор базиса на основе степени
-    if (correction_.degree > 10) {
-        correction_.basis_type = BasisType::CHEBYSHEV;
-        log("Using Chebyshev basis for degree " + std::to_string(correction_.degree));
+    // Выбор базиса на основе обнаруженных случаев
+    for (const auto& case_info : edge_result.detected_cases) {
+        if (case_info.type == EdgeCaseType::HIGH_DEGREE && 
+            correction_.degree > 10) {
+            correction_.basis_type = BasisType::CHEBYSHEV;
+            log("Using Chebyshev basis for high degree polynomial");
+            break;
+        }
     }
     
     return true;

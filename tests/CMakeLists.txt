@@ -149,3 +149,13 @@ target_link_libraries(test_step_2_1_7
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_2_1_7)
+
+# Тест шага 2.1.8 - обработка крайних случаев параметризации
+add_executable(test_step_2_1_8
+    test_edge_case_handler.cpp
+)
+target_link_libraries(test_step_2_1_8
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_2_1_8)
