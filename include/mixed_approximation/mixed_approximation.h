@@ -6,6 +6,7 @@
 #include "functional.h"
 #include "validator.h"
 #include "optimizer.h"
+#include "decomposition.h"
 #include <memory>
 
 namespace mixed_approx {
@@ -72,14 +73,14 @@ public:
     
 private:
     ApproximationConfig config_;
-    Polynomial polynomial_;
     Functional functional_;
+    Polynomial polynomial_;
     
     /**
      * @brief Построение начального приближения
      * @return полином, удовлетворяющий интерполяционным условиям
      */
-    Polynomial build_initial_approximation() const;
+    Polynomial build_initial_approximation();
     
     /**
      * @brief Применение интерполяционных ограничений к полиному

@@ -1,15 +1,77 @@
-add_executable(test_basic test_basic.cpp)
-target_link_libraries(test_basic mixed_approximation)
-add_test(NAME test_basic COMMAND test_basic)
+# Включение Google Test
+include(GoogleTest)
 
-add_executable(test_validator_advanced test_validator_advanced.cpp)
-target_link_libraries(test_validator_advanced mixed_approximation)
-add_test(NAME test_validator_advanced COMMAND test_validator_advanced)
+# Полиномы
+add_executable(test_polynomial
+    polynomial/test_polynomial.cpp
+)
+target_link_libraries(test_polynomial
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_polynomial)
 
-add_executable(test_validator_integration test_validator_integration.cpp)
-target_link_libraries(test_validator_integration mixed_approximation)
-add_test(NAME test_validator_integration COMMAND test_validator_integration)
+# Функционал
+add_executable(test_functional
+    functional/test_functional.cpp
+)
+target_link_libraries(test_functional
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_functional)
 
-add_executable(test_decomposition test_decomposition.cpp)
-target_link_libraries(test_decomposition mixed_approximation)
-add_test(NAME test_decomposition COMMAND test_decomposition)
+# Валидатор - базовые тесты
+add_executable(test_validator_basic
+    validator/test_validator_basic.cpp
+)
+target_link_libraries(test_validator_basic
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_validator_basic)
+
+# Валидатор - расширенные тесты
+add_executable(test_validator_advanced
+    validator/test_validator_advanced.cpp
+)
+target_link_libraries(test_validator_advanced
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_validator_advanced)
+
+# Декомпозиция
+add_executable(test_decomposition
+    decomposition/test_decomposition.cpp
+)
+target_link_libraries(test_decomposition
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_decomposition)
+
+# Интеграционные тесты
+add_executable(test_integration
+    integration/test_integration.cpp
+)
+target_link_libraries(test_integration
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_integration)
+
+# Объединённый тестовый запуск (опционально)
+add_executable(test_all
+    polynomial/test_polynomial.cpp
+    functional/test_functional.cpp
+    validator/test_validator_basic.cpp
+    validator/test_validator_advanced.cpp
+    decomposition/test_decomposition.cpp
+    integration/test_integration.cpp
+)
+target_link_libraries(test_all
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_all)

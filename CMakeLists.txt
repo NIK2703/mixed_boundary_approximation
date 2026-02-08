@@ -1,13 +1,25 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(MixedApproximation LANGUAGES CXX)
 
 # Настройка стандарта C++
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Включение FetchContent для Google Test
+include(FetchContent)
+
 # Опции сборки
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
+
+# Настройка Google Test через FetchContent
+FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+)
+# Для Windows: предотвратить переопределение RuntimeLibrary
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
 
 # Поиск yaml-cpp для поддержки YAML конфигураций
 find_package(yaml-cpp QUIET)
