@@ -70,6 +70,34 @@ Polynomial MixedApproximation::build_initial_approximation() {
         throw std::invalid_argument("Decomposition failed: " + decomp.message());
     }
     
+    // Обновляем метаданные на основе фактического построения interpolation_basis
+    if (decomp.interpolation_basis.is_valid) {
+        decomp.metadata.m_eff = decomp.interpolation_basis.m_eff;
+        decomp.metadata.n_free = n - decomp.metadata.m_eff + 1;
+        decomp.metadata.nodes_merged = (decomp.metadata.m_eff < m);
+        
+        // Добавляем информацию о слиянии узлов
+        if (decomp.metadata.nodes_merged) {
+            decomp.metadata.validation_message +=
+                "\nNote: " + std::to_string(m - decomp.metadata.m_eff) +
+                " close nodes were merged. Effective m = " + std::to_string(decomp.metadata.m_eff);
+        }
+        
+        // Верификация интерполяционного полинома
+        if (!decomp.interpolation_basis.verify_interpolation(params.epsilon_unique)) {
+            decomp.metadata.validation_message +=
+                "\nWarning: Interpolation verification failed. Accuracy may be insufficient.";
+        }
+        
+        // Создание информации о методе интерполяции
+        std::ostringstream info_oss;
+        info_oss << "Barycentric interpolation, m_eff=" << decomp.metadata.m_eff;
+        if (decomp.interpolation_basis.is_normalized) {
+            info_oss << ", normalized";
+        }
+        decomp.metadata.interpolation_info = info_oss.str();
+    }
+    
     // Начальное приближение: F(x) = P_int(x) + Q(x)·W(x) с Q(x) ≡ 0
     // Это даёт полином, точно удовлетворяющий интерполяционным условиям
     std::vector<double> zero_q(decomp.metadata.n_free, 0.0);
