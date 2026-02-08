@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "mixed_approximation/edge_case_handler.h"
+#include "mixed_approximation/edge_case_result_formatter.h"
 #include "mixed_approximation/parameterization_data.h"
 
 namespace mixed_approx {

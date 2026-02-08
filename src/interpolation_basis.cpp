@@ -1,12 +1,11 @@
 #include "mixed_approximation/interpolation_basis.h"
 #include "mixed_approximation/weight_multiplier.h"
-#include <numeric>
-#include <iomanip>
+#include <vector>
 #include <cmath>
 #include <algorithm>
-#include <limits>
-#include <sstream>
+#include <numeric>
 #include <stdexcept>
+#include <sstream>
 
 namespace mixed_approx {
 
@@ -29,7 +28,6 @@ void InterpolationBasis::build(const std::vector<double>& nodes_vec,
         return;
     }
     
-    // Инициализация
     method = meth;
     x_center = (interval_start + interval_end) / 2.0;
     x_scale = (interval_end - interval_start) / 2.0;
@@ -38,21 +36,17 @@ void InterpolationBasis::build(const std::vector<double>& nodes_vec,
     is_valid = false;
     error_message.clear();
     
-    // 1. Копируем исходные данные в члены класса
     nodes = nodes_vec;
-    nodes_original = nodes_vec;  // Сохраняем исходные узлы до нормализации
+    nodes_original = nodes_vec;
     values = values_vec;
     
-    // 2. Нормализация координат (если включено)
     if (enable_normalization && x_scale > 0) {
         normalize_nodes(interval_start, interval_end);
         is_normalized = true;
     }
     
-    // 3. Сортировка узлов
     sort_nodes_and_values(nodes, values);
     
-    // 4. Объединение близких узлов (если включено)
     if (enable_node_merging && nodes.size() > 1) {
         double interval_length = interval_end - interval_start;
         auto merged = merge_close_nodes(nodes, values, interval_length);
@@ -69,18 +63,15 @@ void InterpolationBasis::build(const std::vector<double>& nodes_vec,
     
     m_eff = static_cast<int>(nodes.size());
     
-    // 5. Проверка уникальности после объединения
     if (!are_nodes_unique(nodes, 1e-14)) {
         is_valid = false;
         error_message = "Non-unique nodes remain after merging";
         return;
     }
     
-    // 6. Вычисление барицентрических весов (если нужно)
     if (method == InterpolationMethod::BARYCENTRIC) {
         compute_barycentric_weights();
         precompute_weighted_values();
-        // Вычисляем divided differences для устойчивого вычисления производных
         compute_divided_differences();
     } else if (method == InterpolationMethod::NEWTON) {
         compute_divided_differences();
@@ -174,338 +165,6 @@ void InterpolationBasis::sort_nodes_and_values(std::vector<double>& nodes_vec,
     values_vec = sorted_values;
 }
 
-void InterpolationBasis::compute_barycentric_weights_standard() {
-    int m = static_cast<int>(nodes.size());
-    barycentric_weights.resize(m);
-    
-    for (int k = 0; k < m; ++k) {
-        double weight = 1.0;
-        for (int j = 0; j < m; ++j) {
-            if (j == k) continue;
-            weight *= (nodes[k] - nodes[j]);
-        }
-        barycentric_weights[k] = 1.0 / weight;
-    }
-    
-    double max_abs = 0.0;
-    for (double w : barycentric_weights) {
-        max_abs = std::max(max_abs, std::abs(w));
-    }
-    if (max_abs > 0) {
-        for (double& w : barycentric_weights) {
-            w /= max_abs;
-        }
-        weight_scale = max_abs;
-    }
-}
-
-void InterpolationBasis::compute_barycentric_weights_logarithmic() {
-    int m = static_cast<int>(nodes.size());
-    barycentric_weights.resize(m);
-    
-    std::vector<double> log_abs_weights(m, 0.0);
-    std::vector<int> sign_weights(m, 1);
-    
-    for (int e = 0; e < m; ++e) {
-        double log_sum = 0.0;
-        int sign = 1;
-        
-        for (int k = 0; k < m; ++k) {
-            if (k == e) continue;
-            double diff = nodes[e] - nodes[k];
-            double abs_diff = std::abs(diff);
-            
-            if (abs_diff < 1e-15) {
-                compute_barycentric_weights_standard();
-                return;
-            }
-            
-            log_sum -= std::log(abs_diff);
-            if (diff < 0) sign = -sign;
-        }
-        
-        log_abs_weights[e] = log_sum;
-        sign_weights[e] = sign;
-    }
-    
-    double max_log = *std::max_element(log_abs_weights.begin(), log_abs_weights.end());
-    
-    double max_abs = 0.0;
-    for (int e = 0; e < m; ++e) {
-        double abs_w = std::exp(log_abs_weights[e] - max_log);
-        barycentric_weights[e] = sign_weights[e] * abs_w;
-        max_abs = std::max(max_abs, std::abs(barycentric_weights[e]));
-    }
-    
-    if (max_abs > 0) {
-        for (double& w : barycentric_weights) {
-            w /= max_abs;
-        }
-    }
-    weight_scale = std::exp(max_log);
-}
-
-void InterpolationBasis::compute_divided_differences() {
-    int m = static_cast<int>(nodes.size());
-    if (m == 0) return;
-    
-    divided_differences.resize(m);
-    
-    for (int i = 0; i < m; ++i) {
-        divided_differences[i] = values[i];
-    }
-    
-    for (int level = 1; level < m; ++level) {
-        for (int i = m - 1; i >= level; --i) {
-            double denom = nodes[i] - nodes[i - level];
-            if (std::abs(denom) < 1e-14) {
-                divided_differences[i] = 0.0;
-            } else {
-                divided_differences[i] = (divided_differences[i] - divided_differences[i-1]) / denom;
-            }
-        }
-    }
-}
-
-void InterpolationBasis::precompute_weighted_values() {
-    weighted_values.resize(barycentric_weights.size());
-    for (size_t i = 0; i < barycentric_weights.size(); ++i) {
-        weighted_values[i] = barycentric_weights[i] * values[i];
-    }
-}
-
-double InterpolationBasis::evaluate(double x) const {
-    if (!is_valid || nodes.empty()) {
-        return 0.0;
-    }
-    
-    double x_norm = x;
-    if (is_normalized) {
-        x_norm = (x - x_center) / x_scale;
-    }
-    
-    if (method == InterpolationMethod::BARYCENTRIC) {
-        return evaluate_barycentric(x_norm);
-    } else if (method == InterpolationMethod::NEWTON) {
-        return evaluate_newton(x_norm);
-    } else {
-        return evaluate_lagrange(x_norm);
-    }
-}
-
-double InterpolationBasis::evaluate_barycentric(double x) const {
-    int m = static_cast<int>(nodes.size());
-    
-    for (int k = 0; k < m; ++k) {
-        if (std::abs(x - nodes[k]) < 1e-12) {
-            return values[k];
-        }
-    }
-    
-    const double* wf = weighted_values.empty() ? nullptr : weighted_values.data();
-    
-    double numerator = 0.0;
-    double denominator = 0.0;
-    
-    for (int k = 0; k < m; ++k) {
-        double diff = x - nodes[k];
-        double inv_diff = 1.0 / diff;
-        denominator += barycentric_weights[k] * inv_diff;
-        if (wf) {
-            numerator += wf[k] * inv_diff;
-        } else {
-            numerator += barycentric_weights[k] * values[k] * inv_diff;
-        }
-    }
-    
-    if (std::abs(denominator) < 1e-14) {
-        return 0.0;
-    }
-    
-    return numerator / denominator;
-}
-
-double InterpolationBasis::evaluate_derivative(double x, int order) const {
-    if (order < 1 || order > 2) {
-        throw std::invalid_argument("Derivative order must be 1 or 2");
-    }
-    
-    if (!is_valid || nodes.empty()) {
-        return 0.0;
-    }
-    
-    double x_norm = x;
-    if (is_normalized) {
-        x_norm = (x - x_center) / x_scale;
-    }
-    
-    double deriv_norm = 0.0;
-    
-    if (method == InterpolationMethod::BARYCENTRIC) {
-        deriv_norm = evaluate_barycentric_derivative(x_norm, order);
-    } else if (method == InterpolationMethod::NEWTON) {
-        // Для NEWTON используем evaluate_newton_derivative которая работает с нормализованными координатами
-        if (order == 1) {
-            deriv_norm = evaluate_newton_derivative(x_norm);
-        } else {
-            deriv_norm = evaluate_newton_second_derivative(x_norm);
-        }
-    } else {
-        // Для LAGRANGE используем численное дифференцирование (evaluate работает с x_norm)
-        const double h = 1e-6;
-        if (order == 1) {
-            double fp = evaluate(x_norm + h) * x_scale;  // Масштабируем обратно
-            double fm = evaluate(x_norm - h) * x_scale;
-            deriv_norm = (fp - fm) / (2.0 * h);
-        } else {
-            double fp = evaluate(x_norm + h) * x_scale;
-            double f = evaluate(x_norm) * x_scale;
-            double fm = evaluate(x_norm - h) * x_scale;
-            deriv_norm = (fp - 2.0 * f + fm) / (h * h);
-        }
-    }
-    
-    // Масштабируем производную
-    if (is_normalized) {
-        // x_norm = (x - x_center) / x_scale
-        // dx_norm/dx = 1/x_scale
-        // dF/dx = dF/dx_norm * dx_norm/dx = deriv_norm / x_scale
-        // d²F/dx² = deriv_norm_norm / x_scale²
-        if (order == 1) {
-            return deriv_norm / x_scale;
-        } else {
-            return deriv_norm / (x_scale * x_scale);
-        }
-    }
-    
-    return deriv_norm;
-}
-
-double InterpolationBasis::evaluate_newton_derivative(double x) const {
-    int m = static_cast<int>(nodes.size());
-    if (m == 0) return 0.0;
-    
-    // Производная полинома Ньютона:
-    // P'(x) = f[z_0,z_1] + f[z_0,z_1,z_2] * (x-z_0) + ...
-    // где f[z_i,...,z_j] - разделенные разности
-    
-    if (m == 1) {
-        // Константный полином - производная = 0
-        return 0.0;
-    }
-    
-    // Производная первого порядка:
-    double deriv = divided_differences[1];
-    double product = 1.0;
-    
-    for (int level = 2; level < m; ++level) {
-        product *= (x - nodes[level-1]);
-        deriv += divided_differences[level] * product;
-    }
-    
-    return deriv;
-}
-
-double InterpolationBasis::evaluate_newton_second_derivative(double x) const {
-    int m = static_cast<int>(nodes.size());
-    if (m < 3) {
-        // Для линейного или константного полинома вторая производная = 0
-        return 0.0;
-    }
-    
-    // Вторая производная полинома Ньютона:
-    // P(x) = Σ_{k=0}^{m-1} dd[k] * ∏_{j=0}^{k-1} (x - z_j)
-    // P'(x) = Σ_{k=1}^{m-1} dd[k] * Σ_{i=0}^{k-1} ∏_{j≠i}^{k-1} (x - z_j)
-    // P''(x) = Σ_{k=2}^{m-1} dd[k] * Σ_{0≤i<l<k} 2 * ∏_{j≠i,l}^{k-1} (x - z_j)
-    //        = 2 * Σ_{k=2}^{m-1} dd[k] * Σ_{0≤i<l<k} ∏_{j≠i,l}^{k-1} (x - z_j)
-    
-    double deriv2 = 0.0;
-    
-    for (int k = 2; k < m; ++k) {
-        // Σ_{0≤i<l<k} ∏_{j≠i,l}^{k-1} (x - z_j)
-        double sum_over_pairs = 0.0;
-        
-        // Перебираем все пары (i, l)
-        for (int i = 0; i < k; ++i) {
-            for (int l = i + 1; l < k; ++l) {
-                // Вычисляем произведение ∏_{j≠i,l}^{k-1} (x - z_j)
-                double prod = 1.0;
-                for (int j = 0; j < k; ++j) {
-                    if (j == i || j == l) continue;
-                    prod *= (x - nodes[j]);
-                }
-                sum_over_pairs += prod;
-            }
-        }
-        
-        deriv2 += 2.0 * divided_differences[k] * sum_over_pairs;
-    }
-    
-    return deriv2;
-}
-
-double InterpolationBasis::evaluate_barycentric_derivative(double x, int order) const {
-    int m = static_cast<int>(nodes.size());
-    
-    // Для m <= 2 барицентрическая формула дает нестабильные результаты
-    // Используем evaluate_newton_derivative как fallback для первой производной
-    if (m <= 2) {
-        if (order == 1) {
-            return evaluate_newton_derivative(x);
-        } else {
-            return evaluate_newton_second_derivative(x);
-        }
-    }
-    
-    for (int k = 0; k < m; ++k) {
-        if (std::abs(x - nodes[k]) < 1e-12) {
-            // В узлах используем численную производную для устойчивости
-            const double h = 1e-8;
-            if (order == 1) {
-                double fp = evaluate_barycentric(x + h);
-                double fm = evaluate_barycentric(x - h);
-                return (fp - fm) / (2.0 * h);
-            } else {
-                double fp = evaluate_barycentric(x + h);
-                double f = evaluate_barycentric(x);
-                double fm = evaluate_barycentric(x - h);
-                return (fp - 2.0 * f + fm) / (h * h);
-            }
-        }
-    }
-    
-    if (order == 1) {
-        // Формула для первой производной в барицентрическом интерполировании:
-        double sum_w_over_dx = 0.0;
-        double sum_wf_over_dx = 0.0;
-        double sum_w_over_dx2 = 0.0;
-        
-        for (int k = 0; k < m; ++k) {
-            double diff = x - nodes[k];
-            double inv_diff = 1.0 / diff;
-            double inv_diff2 = inv_diff * inv_diff;
-            
-            sum_w_over_dx += barycentric_weights[k] * inv_diff;
-            sum_wf_over_dx += weighted_values.empty() ? 
-                barycentric_weights[k] * values[k] * inv_diff : 
-                weighted_values[k] * inv_diff;
-            sum_w_over_dx2 += barycentric_weights[k] * inv_diff2;
-        }
-        
-        double denominator = sum_w_over_dx * sum_w_over_dx;
-        if (std::abs(denominator) < 1e-14) {
-            return 0.0;
-        }
-        
-        double p_x = evaluate_barycentric(x);
-        double numerator = sum_wf_over_dx - p_x * sum_w_over_dx;
-        return numerator / denominator;
-    } else {
-        // Для второй производной используем аналитическую формулу через разделенные разности
-        return evaluate_newton_second_derivative(x);
-    }
-}
-
 bool InterpolationBasis::verify_interpolation(double tolerance) const {
     if (!is_valid) return false;
     
@@ -564,92 +223,6 @@ bool InterpolationBasis::detect_chebyshev_nodes(double tolerance) const {
         }
     }
     return true;
-}
-
-void InterpolationBasis::compute_chebyshev_weights() {
-    int m = static_cast<int>(nodes.size());
-    barycentric_weights.resize(m);
-    
-    for (int k = 0; k < m; ++k) {
-        double sign = (k % 2 == 0) ? 1.0 : -1.0;
-        barycentric_weights[k] = sign * std::sin(M_PI * (2.0*k + 1.0) / (2.0 * m));
-    }
-    
-    double max_abs = 0.0;
-    for (double w : barycentric_weights) {
-        max_abs = std::max(max_abs, std::abs(w));
-    }
-    if (max_abs > 0) {
-        for (double& w : barycentric_weights) {
-            w /= max_abs;
-        }
-    }
-    weight_scale = max_abs;
-}
-
-void InterpolationBasis::compute_barycentric_weights() {
-    if (nodes.size() == 1) {
-        barycentric_weights = {1.0};
-        weighted_values = {values[0]};
-        weight_scale = 1.0;
-        return;
-    }
-    
-    if (nodes.size() == 2) {
-        barycentric_weights.resize(2);
-        double diff = nodes[1] - nodes[0];
-        barycentric_weights[0] = 1.0 / diff;
-        barycentric_weights[1] = -barycentric_weights[0];
-        weight_scale = 1.0;
-        precompute_weighted_values();
-        return;
-    }
-    
-    if (detect_chebyshev_nodes()) {
-        compute_chebyshev_weights();
-        precompute_weighted_values();
-        return;
-    }
-    
-    compute_barycentric_weights_logarithmic();
-    precompute_weighted_values();
-}
-
-double InterpolationBasis::evaluate_newton(double x) const {
-    int m = static_cast<int>(nodes.size());
-    if (m == 0) return 0.0;
-    
-    double result = divided_differences[0];
-    double product = 1.0;
-    
-    for (int level = 1; level < m; ++level) {
-        product *= (x - nodes[level-1]);
-        result += divided_differences[level] * product;
-    }
-    
-    return result;
-}
-
-double InterpolationBasis::evaluate_lagrange(double x) const {
-    int m = static_cast<int>(nodes.size());
-    if (m == 0) return 0.0;
-    
-    double result = 0.0;
-    
-    for (int e = 0; e < m; ++e) {
-        double Le = 1.0;
-        for (int j = 0; j < m; ++j) {
-            if (j == e) continue;
-            double denom = nodes[e] - nodes[j];
-            if (std::abs(denom) < 1e-14) {
-                return values[e];
-            }
-            Le *= (x - nodes[j]) / denom;
-        }
-        result += values[e] * Le;
-    }
-    
-    return result;
 }
 
 } // namespace mixed_approx

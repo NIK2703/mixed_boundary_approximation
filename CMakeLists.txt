@@ -40,12 +40,32 @@ add_library(mixed_approximation
     src/decomposition.cpp
     src/weight_multiplier.cpp
     src/interpolation_basis.cpp
+    src/interpolation_basis_barycentric.cpp
+    src/interpolation_basis_newton.cpp
+    src/interpolation_basis_lagrange.cpp
+    src/interpolation_basis_eval.cpp
     src/correction_polynomial.cpp
+    src/correction_polynomial_basis.cpp
+    src/correction_polynomial_eval.cpp
+    src/correction_polynomial_cache.cpp
+    src/correction_polynomial_ls.cpp
+    src/correction_polynomial_func.cpp
+    src/gauss_quadrature.cpp
     src/composite_polynomial.cpp
+    src/composite_polynomial_analytic.cpp
+    src/composite_polynomial_cache.cpp
     src/parameterization_verification.cpp
+    src/parameterization_verification_svd.cpp
+    src/parameterization_verification_tests.cpp
     src/parameterization_data.cpp
     src/edge_case_handler.cpp
+    src/numerical_anomaly_monitor.cpp
+    src/edge_case_result_formatter.cpp
     src/objective_functor.cpp
+    src/optimization_problem_data.cpp
+    src/convergence_monitor.cpp
+    src/initialization_strategy.cpp
+    src/optimization_post_processor.cpp
 )
 
 target_include_directories(mixed_approximation

@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 #include "mixed_approximation/objective_functor.h"
+#include "mixed_approximation/initialization_strategy.h"
+#include "mixed_approximation/optimization_post_processor.h"
+#include "mixed_approximation/convergence_monitor.h"
 #include "mixed_approximation/composite_polynomial.h"
 #include "mixed_approximation/interpolation_basis.h"
 #include "mixed_approximation/weight_multiplier.h"

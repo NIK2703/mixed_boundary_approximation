@@ -19,172 +19,6 @@ bool EdgeCaseHandlingResult::has_critical_errors() const {
     return !errors.empty();
 }
 
-// ============== NumericalAnomalyMonitor ==============
-
-NumericalAnomalyMonitor::NumericalAnomalyMonitor()
-    : gradient_threshold(1e10)
-    , oscillation_threshold(1e-6)
-    , step_reduction_factor(0.5)
-    , max_consecutive_anomalies(3)
-    , initial_gradient_norm_(0.0)
-    , initial_gradient_set_(false)
-{
-}
-
-void NumericalAnomalyMonitor::reset() {
-    anomaly_history_.clear();
-    value_history_.clear();
-    initial_gradient_set_ = false;
-}
-
-void NumericalAnomalyMonitor::add_anomaly_event(const AnomalyEvent& event) {
-    anomaly_history_.push_back(event);
-    if (event.type != AnomalyType::NONE) {
-        value_history_.push_back(event.value);
-    }
-}
-
-AnomalyMonitorResult NumericalAnomalyMonitor::check_anomaly(int iteration,
-                                                           double current_value,
-                                                           double gradient_norm,
-                                                           const std::vector<double>& params,
-                                                           const std::vector<double>& prev_params) {
-    AnomalyMonitorResult result;
-    result.total_iterations = iteration + 1;
-    
-    // Проверка на переполнение
-    AnomalyType overflow_type = check_overflow(current_value);
-    if (overflow_type != AnomalyType::NONE) {
-        AnomalyEvent event;
-        event.type = overflow_type;
-        event.iteration = iteration;
-        event.value = current_value;
-        event.description = "Overflow or invalid value detected";
-        add_anomaly_event(event);
-        result.anomaly_detected = true;
-        result.last_anomaly_type = overflow_type;
-        result.needs_recovery = true;
-        result.needs_stop = false;
-        result.anomaly_iterations++;
-    }
-    
-    // Проверка на взрыв градиента
-    if (!initial_gradient_set_) {
-        initial_gradient_norm_ = gradient_norm;
-        initial_gradient_set_ = true;
-    }
-    
-    AnomalyType gradient_type = check_gradient_explosion(gradient_norm, initial_gradient_norm_);
-    if (gradient_type != AnomalyType::NONE) {
-        AnomalyEvent event;
-        event.type = gradient_type;
-        event.iteration = iteration;
-        event.value = gradient_norm;
-        event.description = "Gradient explosion detected";
-        add_anomaly_event(event);
-        result.anomaly_detected = true;
-        result.last_anomaly_type = gradient_type;
-        result.needs_recovery = true;
-        result.needs_stop = false;
-        result.anomaly_iterations++;
-    }
-    
-    // Проверка на осцилляции
-    if (!prev_params.empty() && params.size() == prev_params.size()) {
-        std::vector<double> prev_prev_params;
-        if (value_history_.size() >= 2) {
-            prev_prev_params = prev_params;
-        }
-        
-        AnomalyType oscillation_type = check_oscillation(params, prev_params, prev_prev_params);
-        if (oscillation_type != AnomalyType::NONE) {
-            AnomalyEvent event;
-            event.type = oscillation_type;
-            event.iteration = iteration;
-            event.value = std::abs(current_value - value_history_.back());
-            event.description = "Parameter oscillation detected";
-            add_anomaly_event(event);
-            result.anomaly_detected = true;
-            result.last_anomaly_type = oscillation_type;
-            result.needs_recovery = true;
-            result.needs_stop = false;
-            result.anomaly_iterations++;
-        }
-    }
-    
-    // Проверка на необходимость остановки
-    if (result.anomaly_iterations >= max_consecutive_anomalies) {
-        result.needs_stop = true;
-        result.needs_recovery = false;
-    }
-    
-    result.events = anomaly_history_;
-    return result;
-}
-
-AnomalyType NumericalAnomalyMonitor::check_overflow(double value) {
-    if (std::isnan(value)) {
-        return AnomalyType::NAN_DETECTED;
-    }
-    if (std::isinf(value)) {
-        return AnomalyType::INF_DETECTED;
-    }
-    if (std::abs(value) > gradient_threshold) {
-        return AnomalyType::OVERFLOW;
-    }
-    return AnomalyType::NONE;
-}
-
-AnomalyType NumericalAnomalyMonitor::check_gradient_explosion(double gradient_norm, double initial_gradient) {
-    if (gradient_norm > gradient_threshold) {
-        return AnomalyType::GRADIENT_EXPLOSION;
-    }
-    if (initial_gradient > 0 && gradient_norm > initial_gradient * 1e6) {
-        return AnomalyType::GRADIENT_EXPLOSION;
-    }
-    return AnomalyType::NONE;
-}
-
-AnomalyType NumericalAnomalyMonitor::check_oscillation(const std::vector<double>& params,
-                                                        const std::vector<double>& prev_params,
-                                                        const std::vector<double>& /*prev_prev_params*/) {
-    if (params.empty() || prev_params.empty()) {
-        return AnomalyType::NONE;
-    }
-    
-    double total_change = 0.0;
-    double prev_total_change = 0.0;
-    
-    for (size_t i = 0; i < params.size(); ++i) {
-        total_change += std::abs(params[i] - prev_params[i]);
-    }
-    
-    if (total_change < oscillation_threshold) {
-        return AnomalyType::OSCILLATION;
-    }
-    
-    return AnomalyType::NONE;
-}
-
-EdgeCaseHandlingResult EdgeCaseHandler::get_result() const {
-    EdgeCaseHandlingResult result;
-    result.success = errors_.empty();
-    result.detected_cases = detected_cases_;
-    result.handled_cases = handled_cases_;
-    result.warnings = warnings_;
-    result.errors = errors_;
-    return result;
-}
-
-bool EdgeCaseHandler::has_critical_errors() const {
-    for (const auto& info : detected_cases_) {
-        if (info.level == EdgeCaseLevel::CRITICAL) {
-            return true;
-        }
-    }
-    return !errors_.empty();
-}
-
 // ============== EdgeCaseHandler ==============
 
 EdgeCaseHandler::EdgeCaseHandler()
@@ -786,123 +620,23 @@ bool EdgeCaseHandler::adapt_parameterization(EdgeCaseHandlingResult& /*result*/,
     return success;
 }
 
-// ============== Вспомогательные функции форматирования ==============
-
-std::string format_edge_case_result(const EdgeCaseHandlingResult& result) {
-    std::ostringstream oss;
-    
-    oss << "=================================================\n";
-    oss << "Edge Case Handling Report\n";
-    oss << "=================================================\n\n";
-    
-    oss << "Status: " << (result.success ? "SUCCESS" : "FAILURE") << "\n\n";
-    
-    if (!result.detected_cases.empty()) {
-        oss << "Detected Cases:\n";
-        for (size_t i = 0; i < result.detected_cases.size(); ++i) {
-            const auto& info = result.detected_cases[i];
-            oss << "  " << (i + 1) << ". [" << static_cast<int>(info.level) << "] "
-                << info.message << "\n";
-            if (!info.recommendation.empty()) {
-                oss << "     Rec: " << info.recommendation << "\n";
-            }
-        }
-        oss << "\n";
-    }
-    
-    if (!result.warnings.empty()) {
-        oss << "Warnings:\n";
-        for (const auto& w : result.warnings) {
-            oss << "  - " << w << "\n";
-        }
-        oss << "\n";
-    }
-    
-    if (!result.errors.empty()) {
-        oss << "Errors:\n";
-        for (const auto& e : result.errors) {
-            oss << "  - " << e << "\n";
-        }
-        oss << "\n";
-    }
-    
-    if (result.parameters_modified) {
-        oss << "Parameters Modified: YES\n";
-        oss << "  - Original m: " << (result.adapted_m > 0 ? "varies" : "N/A") << "\n";
-        oss << "  - Adapted m: " << result.adapted_m << "\n";
-    }
-    
-    oss << "=================================================\n";
-    
-    return oss.str();
+EdgeCaseHandlingResult EdgeCaseHandler::get_result() const {
+    EdgeCaseHandlingResult result;
+    result.success = errors_.empty();
+    result.detected_cases = detected_cases_;
+    result.handled_cases = handled_cases_;
+    result.warnings = warnings_;
+    result.errors = errors_;
+    return result;
 }
 
-std::string format_zero_nodes_result(const ZeroNodesResult& result) {
-    return result.info_message;
-}
-
-std::string format_full_interpolation_result(const FullInterpolationResult& result) {
-    std::ostringstream oss;
-    oss << result.info_message << "\n\n" << result.recommendations;
-    return oss.str();
-}
-
-std::string format_overconstrained_result(const OverconstrainedResult& result) {
-    std::ostringstream oss;
-    oss << result.info_message;
-    if (result.resolved && !result.selected_indices.empty()) {
-        oss << "\nSelected node indices: ";
-        for (size_t i = 0; i < std::min(static_cast<size_t>(5), result.selected_indices.size()); ++i) {
-            oss << result.selected_indices[i] << " ";
-        }
-        if (result.selected_indices.size() > 5) {
-            oss << "... (total " << result.selected_indices.size() << ")";
+bool EdgeCaseHandler::has_critical_errors() const {
+    for (const auto& info : detected_cases_) {
+        if (info.level == EdgeCaseLevel::CRITICAL) {
+            return true;
         }
     }
-    return oss.str();
-}
-
-std::string format_close_nodes_result(const CloseNodesResult& result) {
-    return result.info_message;
-}
-
-std::string format_high_degree_result(const HighDegreeResult& result) {
-    std::ostringstream oss;
-    oss << "High Degree Analysis:\n";
-    oss << "  - Original degree: " << result.original_degree << "\n";
-    oss << "  - Requires adaptation: " << (result.requires_adaptation ? "YES" : "NO") << "\n";
-    oss << "  - Switch to Chebyshev: " << (result.switch_to_chebyshev ? "YES" : "NO") << "\n";
-    oss << "  - Suggest splines: " << (result.suggest_splines ? "YES" : "NO") << "\n";
-    oss << "  - Recommended degree: " << result.recommended_degree << "\n";
-    
-    if (!result.recommendations.empty()) {
-        oss << "\nRecommendations:\n";
-        for (const auto& rec : result.recommendations) {
-            oss << rec << "\n";
-        }
-    }
-    
-    return oss.str();
-}
-
-std::string format_degeneracy_result(const DegeneracyResult& result) {
-    std::ostringstream oss;
-    oss << "Degeneracy Analysis:\n";
-    oss << "  - Is degenerate: " << (result.is_degenerate ? "YES" : "NO") << "\n";
-    oss << "  - Type: ";
-    switch (result.type) {
-        case DegeneracyType::NONE: oss << "None"; break;
-        case DegeneracyType::CONSTANT: oss << "Constant values"; break;
-        case DegeneracyType::LINEAR: oss << "Linear dependence"; break;
-        case DegeneracyType::RANK_DEFICIENT: oss << "Rank deficient"; break;
-    }
-    oss << "\n";
-    
-    if (result.is_degenerate) {
-        oss << "  - Info: " << result.info_message << "\n";
-    }
-    
-    return oss.str();
+    return !errors_.empty();
 }
 
 } // namespace mixed_approx
