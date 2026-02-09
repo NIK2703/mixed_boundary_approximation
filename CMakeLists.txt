@@ -21,12 +21,60 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# Поиск Eigen3 для линейной алгебры
+find_package(Eigen3 QUIET)
+if(NOT Eigen3_FOUND)
+    # Если Eigen3 не найден, загружаем автоматически через FetchContent
+    message(STATUS "Eigen3 not found, will download and build automatically")
+    
+    include(FetchContent)
+    FetchContent_Declare(
+        eigen
+        URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip
+    )
+    FetchContent_GetProperties(eigen)
+    if(NOT eigen_POPULATED)
+        FetchContent_Populate(eigen)
+        add_subdirectory(${eigen_SOURCE_DIR} ${eigen_BINARY_DIR})
+    endif()
+else()
+    message(STATUS "Eigen3 found: ${Eigen3_VERSION}")
+endif()
+
 # Поиск yaml-cpp для поддержки YAML конфигураций
 find_package(yaml-cpp QUIET)
 if(NOT yaml-cpp_FOUND)
     # Если yaml-cpp не найден, используем встроенный простой парсер
     message(STATUS "yaml-cpp not found, will use simple config parser")
     add_definitions(-DUSE_SIMPLE_PARSER)
+endif()
+
+# Поиск NLopt для поддержки L-BFGS-B оптимизации
+find_package(NLopt QUIET)
+if(NOT NLopt_FOUND)
+    message(STATUS "NLopt not found. Will download and build automatically.")
+    
+    # Используем FetchContent для автоматической загрузки NLopt
+    FetchContent_Declare(
+        nlopt
+        GIT_REPOSITORY https://github.com/stevengj/nlopt.git
+        GIT_TAG v2.7.1
+    )
+    # Настройки NLopt: отключаем тесты и примеры
+    set(NLOPT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(NLOPT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(NLOPT_BUILD_MATLAB OFF CACHE BOOL "" FORCE)
+    set(NLOPT_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+    set(NLOPT_USE_CXX11 ON CACHE BOOL "" FORCE)
+    
+    FetchContent_MakeAvailable(nlopt)
+    
+    # Переименовываем цель для единообразия
+    if(TARGET nlopt)
+        add_library(NLopt::NLopt ALIAS nlopt)
+    endif()
+else()
+    message(STATUS "NLopt found: ${NLopt_VERSION}")
 endif()
 
 # Добавляем библиотеку
@@ -74,6 +122,7 @@ add_library(mixed_approximation
     src/initialization_strategy.cpp
     src/optimization_post_processor.cpp
     src/constrained_polynomial.cpp
+    src/lbfgs_optimizer.cpp
 )
 
 target_include_directories(mixed_approximation
@@ -82,10 +131,24 @@ target_include_directories(mixed_approximation
         $<INSTALL_INTERFACE:include>
 )
 
+# Линковка Eigen3 (header-only библиотека)
+if(Eigen3_FOUND)
+    target_link_libraries(mixed_approximation PUBLIC Eigen3::Eigen)
+else()
+    # Если используем загруженный eigen, добавляем его include директорию
+    target_include_directories(mixed_approximation PUBLIC ${eigen_SOURCE_DIR})
+endif()
+
 # Линковка yaml-cpp если найден
 if(yaml-cpp_FOUND)
     target_link_libraries(mixed_approximation PRIVATE yaml-cpp)
     target_compile_definitions(mixed_approximation PRIVATE HAS_YAML_CPP)
+endif()
+
+# Линковка NLopt если найден
+if(NLopt_FOUND)
+    target_link_libraries(mixed_approximation PRIVATE NLopt::NLopt)
+    target_compile_definitions(mixed_approximation PRIVATE HAS_NLOPT)
 endif()
 
 # Настройки компилятора для разных платформ

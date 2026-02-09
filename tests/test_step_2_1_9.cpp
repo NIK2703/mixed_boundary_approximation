@@ -76,19 +76,21 @@ TEST(ConvergenceMonitorTest, DetectDivergence) {
     EXPECT_TRUE(monitor.detect_divergence(100.0));
 }
 
-// Test 6: InitializationStrategy selection logic
+// Test 6: InitializationStrategy selection logic (adaptive according to step 4.2)
 TEST(InitializationStrategySelectorTest, StrategySelection) {
-    // Только аппроксимация -> LEAST_SQUARES
+    // Сparse data (rho < 0.5*n) -> RANDOM
     {
         CompositePolynomial poly;
         poly.num_free_params = 3;
         OptimizationProblemData data;
+        data.interval_a = 0.0;
+        data.interval_b = 1.0;
         data.approx_x = {0.5};
         data.approx_f = {0.5};
         data.approx_weight = {1.0};
         
         auto strategy = InitializationStrategySelector::select(poly, data);
-        EXPECT_EQ(strategy, InitializationStrategy::LEAST_SQUARES);
+        EXPECT_EQ(strategy, InitializationStrategy::RANDOM);
     }
     
     // Нет аппроксимации -> ZERO
@@ -101,17 +103,22 @@ TEST(InitializationStrategySelectorTest, StrategySelection) {
         EXPECT_EQ(strategy, InitializationStrategy::ZERO);
     }
     
-    // Только отталкивание -> ZERO
+    // Сильные барьеры (beta > 1000) -> LEAST_SQUARES (with aggressive correction)
     {
         CompositePolynomial poly;
         poly.num_free_params = 3;
         OptimizationProblemData data;
+        data.interval_a = 0.0;
+        data.interval_b = 1.0;
+        data.approx_x = {0.5};
+        data.approx_f = {0.5};
+        data.approx_weight = {1.0};
         data.repel_y = {0.3};
         data.repel_forbidden = {0.5};
-        data.repel_weight = {1000.0};  // Большой вес -> ZERO
+        data.repel_weight = {10000.0};  // Очень большой вес -> сильные барьеры
         
         auto strategy = InitializationStrategySelector::select(poly, data);
-        EXPECT_EQ(strategy, InitializationStrategy::ZERO);
+        EXPECT_EQ(strategy, InitializationStrategy::LEAST_SQUARES);
     }
 }
 
@@ -276,23 +283,26 @@ TEST(ObjectiveFunctorTest, ComputeComponents) {
     EXPECT_NEAR(comps.total, comps.approx + comps.repel + comps.reg, 1e-10);
 }
 
-// Test 12: InitializationStrategySelector::select()
+// Test 12: InitializationStrategySelector::select() with mixed data
 TEST(InitializationStrategySelectorTest, Select) {
     CompositePolynomial poly;
     poly.num_free_params = 3;
     
     OptimizationProblemData data;
+    data.interval_a = 0.0;
+    data.interval_b = 1.0;
     data.approx_x = {0.5};
     data.approx_f = {0.5};
     data.approx_weight = {1.0};
     data.repel_y = {0.3};
     data.repel_forbidden = {0.5};
-    data.repel_weight = {10.0};
+    data.repel_weight = {10.0};  // beta = 10 / 1 = 10 (< 100)
     data.interp_z = {0.0, 1.0};
     data.interp_f = {0.0, 1.0};
     
     auto strategy = InitializationStrategySelector::select(poly, data);
-    EXPECT_EQ(strategy, InitializationStrategy::LEAST_SQUARES);
+    // Sparse data (rho=1.0 < 0.5*3=1.5) -> RANDOM
+    EXPECT_EQ(strategy, InitializationStrategy::RANDOM);
 }
 
 // Test 13: OptimizationPostProcessor with valid setup

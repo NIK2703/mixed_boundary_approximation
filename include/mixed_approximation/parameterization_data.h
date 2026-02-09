@@ -398,51 +398,6 @@ public:
     size_t pool_size() const { return memory_pool_.size(); }
 };
 
-// ============== Шаг 2.1.7.10: Интерфейс для оптимизатора ==============
-
-/**
- * @brief Функтор для оптимизатора L-BFGS
- * 
- * Инкапсулирует вычисление функционала и его градиента
- */
-class ObjectiveFunctor {
-private:
-    const CompositePolynomial& param_;   // Ссылка на параметризацию (без изменения)
-    const ApproximationConfig& config_;   // Данные задачи
-    
-public:
-    /**
-     * @brief Конструктор
-     * @param param параметризация
-     * @param config конфигурация задачи
-     */
-    ObjectiveFunctor(const CompositePolynomial& param, const ApproximationConfig& config)
-        : param_(param), config_(config) {}
-    
-    /**
-     * @brief Вычисление значения функционала
-     * @param q вектор коэффициентов Q(x)
-     * @return значение функционала J(q)
-     */
-    double operator()(const std::vector<double>& q) const;
-    
-    /**
-     * @brief Вычисление градиента
-     * @param q вектор коэффициентов
-     * @param grad вектор градиента (будет заполнен)
-     */
-    void gradient(const std::vector<double>& q, std::vector<double>& grad) const;
-    
-    /**
-     * @brief Комбинированное вычисление (для оптимизаторов, требующих одновременного расчёта)
-     * @param q вектор коэффициентов
-     * @param f значение функционала (будет заполнено)
-     * @param grad вектор градиента (будет заполнен)
-     */
-    void evaluate_with_gradient(const std::vector<double>& q,
-                                double& f, std::vector<double>& grad) const;
-};
-
 // ============== Шаг 2.1.7.9: Механизмы инвалидации кэшей ==============
 
 /**

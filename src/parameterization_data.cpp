@@ -460,24 +460,4 @@ void ParameterizationWorkspace::compute_batch_product(const double* a,
     }
 }
 
-// ============== Реализация ObjectiveFunctor ==============
-
-double ObjectiveFunctor::operator()(const std::vector<double>& q) const {
-    FunctionalEvaluator evaluator(config_);
-    return evaluator.evaluate_objective(param_, q);
-}
-
-void ObjectiveFunctor::gradient(const std::vector<double>& q, 
-                                std::vector<double>& grad) const {
-    FunctionalEvaluator evaluator(config_);
-    evaluator.evaluate_gradient(param_, q, grad);
-}
-
-void ObjectiveFunctor::evaluate_with_gradient(const std::vector<double>& q,
-                                              double& f, 
-                                              std::vector<double>& grad) const {
-    FunctionalEvaluator evaluator(config_);
-    evaluator.evaluate_objective_and_gradient(param_, q, f, grad);
-}
-
 } // namespace mixed_approx

@@ -114,6 +114,8 @@ add_executable(test_all
     test_weight_multiplier.cpp
     test_interpolation_basis.cpp
     test_step_2_1_1.cpp
+    test_lbfgs_optimizer.cpp
+    test_step_4_2.cpp
 )
 target_link_libraries(test_all
     mixed_approximation
@@ -210,3 +212,23 @@ target_link_libraries(test_step_3_3
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_3_3)
+
+# Тест шага 4.1 - L-BFGS-B оптимизатор
+add_executable(test_lbfgs_optimizer
+    test_lbfgs_optimizer.cpp
+)
+target_link_libraries(test_lbfgs_optimizer
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_lbfgs_optimizer)
+
+# Тест шага 4.2 - стратегия инициализации параметров
+add_executable(test_step_4_2
+    test_step_4_2.cpp
+)
+target_link_libraries(test_step_4_2
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_4_2)
