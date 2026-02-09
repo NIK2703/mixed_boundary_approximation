@@ -127,6 +127,7 @@ add_library(mixed_approximation STATIC
     src/barrier_safety_monitor.cpp
     src/variable_normalizer.cpp
     src/overfitting_detector.cpp
+    src/sensitivity_analysis.cpp
 )
 
 target_include_directories(mixed_approximation

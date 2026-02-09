@@ -114,6 +114,7 @@ add_executable(test_all
     test_2_1_4_correction_polynomial_parameterization.cpp
     test_4_1_optimizer_selection_configuration.cpp
     test_4_2_optimizer_initialization_strategy.cpp
+    test_6_2_sensitivity_analysis.cpp
 )
 target_link_libraries(test_all
     mixed_approximation
@@ -280,3 +281,13 @@ target_link_libraries(test_6_1_solution_verification_validation
     GTest::gtest_main
 )
 gtest_discover_tests(test_6_1_solution_verification_validation)
+
+# Тест шага 6.2 - анализ чувствительности и настройка параметров
+add_executable(test_6_2_sensitivity_analysis_parameter_tuning
+    test_6_2_sensitivity_analysis.cpp
+)
+target_link_libraries(test_6_2_sensitivity_analysis_parameter_tuning
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_6_2_sensitivity_analysis_parameter_tuning)
