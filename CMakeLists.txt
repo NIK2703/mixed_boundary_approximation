@@ -78,7 +78,7 @@ else()
 endif()
 
 # Добавляем библиотеку
-add_library(mixed_approximation
+add_library(mixed_approximation STATIC
     src/polynomial.cpp
     src/validator.cpp
     src/validator_checks.cpp
@@ -125,6 +125,7 @@ add_library(mixed_approximation
     src/lbfgs_optimizer.cpp
     src/solution_validator.cpp
     src/barrier_safety_monitor.cpp
+    src/variable_normalizer.cpp
 )
 
 target_include_directories(mixed_approximation

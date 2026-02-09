@@ -250,3 +250,13 @@ target_link_libraries(test_5_1_barrier_singularity_protection
     GTest::gtest_main
 )
 gtest_discover_tests(test_5_1_barrier_singularity_protection)
+
+# Тест шага 5.2 - масштабирование переменных
+add_executable(test_5_2_variable_normalization_scaling
+    test_5_2_variable_normalization_scaling.cpp
+)
+target_link_libraries(test_5_2_variable_normalization_scaling
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_5_2_variable_normalization_scaling)
