@@ -270,3 +270,13 @@ target_link_libraries(test_5_3_overfitting_detection_diagnostics
     GTest::gtest_main
 )
 gtest_discover_tests(test_5_3_overfitting_detection_diagnostics)
+
+# Тест шага 6.1 - верификация и валидация решения
+add_executable(test_6_1_solution_verification_validation
+    test_6_1_solution_verification_validation.cpp
+)
+target_link_libraries(test_6_1_solution_verification_validation
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_6_1_solution_verification_validation)
