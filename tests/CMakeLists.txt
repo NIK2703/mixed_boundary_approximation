@@ -190,3 +190,13 @@ target_link_libraries(test_step_3_1_1
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_3_1_1)
+
+# Тест шага 3.2 - расширенный функционал с барьерной защитой и нормализацией
+add_executable(test_step_3_2
+    test_step_3_2.cpp
+)
+target_link_libraries(test_step_3_2
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_3_2)

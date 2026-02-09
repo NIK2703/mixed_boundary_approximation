@@ -1,8 +1,61 @@
 #include "mixed_approximation/functional.h"
 #include <cmath>
 #include <numeric>
+#include <sstream>
+#include <iomanip>
 
 namespace mixed_approx {
+
+// ============== Реализация FunctionalDiagnostics ==============
+
+std::string FunctionalDiagnostics::format_report() const {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(4);
+    
+    oss << "Функционал смешанной аппроксимации:\n";
+    oss << "  Аппроксимирующий член:  " << normalized_approx << "   (вес: " << weight_approx << ", доля: " << share_approx << "%)\n";
+    oss << "  Отталкивающий член:     " << normalized_repel << "   (вес: " << weight_repel << ", доля: " << share_repel << "%)\n";
+    oss << "  Регуляризация:          " << normalized_reg << "   (вес: " << weight_reg << ", доля: " << share_reg << "%)\n";
+    oss << "  Итого:                  " << total_functional << "\n\n";
+    
+    oss << "Диагностика:\n";
+    if (std::isfinite(min_repulsion_distance)) {
+        oss << "  Минимальное расстояние до запрещённых точек: " << min_repulsion_distance << "\n";
+    } else {
+        oss << "  Минимальное расстояние до запрещённых точек: N/A (нет точек)\n";
+    }
+    oss << "  Максимальный остаток аппроксимации: " << max_residual << "\n";
+    oss << "  Норма второй производной: " << second_deriv_norm << "\n";
+    
+    if (has_numerical_anomaly) {
+        oss << "\nВНИМАНИЕ: Обнаружена численная аномалия!\n";
+        oss << "  " << anomaly_description << "\n";
+    }
+    
+    if (is_dominant_component()) {
+        oss << "\nВНИМАНИЕ: Доминирование одной компоненты!\n";
+        oss << get_weight_recommendation() << "\n";
+    }
+    
+    return oss.str();
+}
+
+std::string FunctionalDiagnostics::get_weight_recommendation() const {
+    std::ostringstream oss;
+    
+    if (share_approx > 95.0) {
+        oss << "Рекомендация: Аппроксимация доминирует (>95%). ";
+        oss << "Рассмотрите увеличение весов отталкивания (B_j) или уменьшение весов аппроксимации (σ_i).";
+    } else if (share_repel > 95.0) {
+        oss << "Рекомендация: Отталкивание доминирует (>95%). ";
+        oss << "Рассмотрите уменьшение весов отталкивания (B_j) или увеличение γ.";
+    } else if (share_reg > 95.0) {
+        oss << "Рекомендация: Регуляризация доминирует (>95%). ";
+        oss << "Рассмотрите уменьшение γ или увеличение весов других компонент.";
+    }
+    
+    return oss.str();
+}
 
 Functional::Functional(const ApproximationConfig& config) : config_(config) {}
 
@@ -399,6 +452,265 @@ void FunctionalEvaluator::compute_reg_gradient(const CompositePolynomial& param,
         
         grad[k] += grad_k * h;
     }
+}
+
+// ============== Шаг 3.2: Новые методы FunctionalEvaluator ==============
+
+FunctionalEvaluator::FunctionalEvaluator(const ApproximationConfig& config,
+                                        const BarrierParams& barrier_params)
+    : config_(config), barrier_params_(barrier_params), normalization_params_() {}
+
+void FunctionalEvaluator::set_barrier_params(const BarrierParams& params) {
+    barrier_params_ = params;
+}
+
+void FunctionalEvaluator::set_normalization_params(const NormalizationParams& params) {
+    normalization_params_ = params;
+}
+
+const NormalizationParams& FunctionalEvaluator::get_normalization_params() const {
+    return normalization_params_;
+}
+
+double FunctionalEvaluator::compute_barrier_term(double dist, double weight, int& zone) const {
+    const double eps = barrier_params_.epsilon_safe;
+    const double k = barrier_params_.smoothing_factor;
+    const double warning_factor = barrier_params_.warning_zone_factor;
+
+    // Классификация зоны
+    if (dist <= eps) {
+        zone = 2;  // Критическая зона
+        // Квадратичное сглаживание в критической зоне:
+        // term_j = B_j / (ε² + k·(ε - dist)²)
+        double smooth = eps * eps + k * (eps - dist) * (eps - dist);
+        return weight / smooth;
+    } else if (dist <= warning_factor * eps) {
+        zone = 1;  // Предупредительная зона
+        // Обычная формула с безопасным знаменателем
+        double safe_dist_sq = std::max(dist * dist, eps * eps);
+        return weight / safe_dist_sq;
+    } else {
+        zone = 0;  // Нормальная зона
+        double dist_sq = dist * dist;
+        return weight / dist_sq;
+    }
+}
+
+double FunctionalEvaluator::compute_effective_weight(double base_weight, double dist, int zone) const {
+    const double eps = barrier_params_.epsilon_safe;
+    const double alpha = barrier_params_.adaptive_gain;
+
+    // Динамическая адаптация силы барьера
+    // При dist < 2·ε_safe временно увеличиваем вес:
+    // effective_Bj = B_j · (1 + α · (2·ε - dist) / ε)
+    if (zone == 2 && dist > 0) {
+        double factor = 1.0 + alpha * (2.0 * eps - dist) / eps;
+        return base_weight * std::max(factor, 1.0);
+    }
+    return base_weight;
+}
+
+RepulsionResult FunctionalEvaluator::compute_repel_withDiagnostics(
+    const CompositePolynomial& param,
+    const std::vector<double>& q) const {
+
+    RepulsionResult result;
+    result.total = 0.0;
+    result.min_distance = std::numeric_limits<double>::infinity();
+    result.max_distance = 0.0;
+    result.critical_count = 0;
+    result.warning_count = 0;
+    result.barrier_activated = false;
+    result.distances.clear();
+
+    for (const auto& point : config_.repel_points) {
+        double P_int = param.interpolation_basis.evaluate(point.x);
+        double W = param.weight_multiplier.evaluate(point.x);
+        double Q = param.correction_poly.evaluate_Q_with_coeffs(point.x, q);
+        double F = P_int + Q * W;
+
+        double diff = point.y_forbidden - F;
+        double dist = std::abs(diff);
+
+        // Классификация зоны
+        int zone = 0;
+        if (dist <= barrier_params_.epsilon_safe) {
+            zone = 2;
+            result.critical_count++;
+            result.barrier_activated = true;
+        } else if (dist <= barrier_params_.warning_zone_factor * barrier_params_.epsilon_safe) {
+            zone = 1;
+            result.warning_count++;
+        }
+
+        // Вычисление барьерного члена
+        double effective_weight = compute_effective_weight(point.weight, dist, zone);
+        double term = compute_barrier_term(dist, effective_weight, zone);
+
+        result.total += term;
+        result.distances.push_back(dist);
+        result.min_distance = std::min(result.min_distance, dist);
+        result.max_distance = std::max(result.max_distance, dist);
+    }
+
+    // Проверка на барьерный коллапс
+    if (result.total > 1e15) {
+        // Это признак несовместимости критериев
+    }
+
+    return result;
+}
+
+FunctionalResult FunctionalEvaluator::evaluate_with_diagnostics(
+    const CompositePolynomial& param,
+    const std::vector<double>& q) const {
+
+    FunctionalResult result;
+    FunctionalDiagnostics& diag = result.diagnostics;
+
+    // Вычисляем компоненты
+    RepulsionResult repel_result = compute_repel_withDiagnostics(param, q);
+
+    diag.raw_approx = compute_approx(param, q);
+    diag.raw_repel = repel_result.total;
+    diag.raw_reg = compute_regularization(param, q);
+
+    // Проверка на численные аномалии
+    bool has_nan = std::isnan(diag.raw_approx) || std::isnan(diag.raw_repel) || std::isnan(diag.raw_reg);
+    bool has_inf = std::isinf(diag.raw_approx) || std::isinf(diag.raw_repel) || std::isinf(diag.raw_reg);
+
+    if (has_nan) {
+        result.status = FunctionalStatus::NAN_DETECTED;
+        diag.has_numerical_anomaly = true;
+        diag.anomaly_description = "Обнаружен NaN в компоненте функционала";
+        result.value = std::numeric_limits<double>::infinity();
+        return result;
+    }
+
+    if (has_inf) {
+        result.status = FunctionalStatus::INF_DETECTED;
+        diag.has_numerical_anomaly = true;
+        diag.anomaly_description = "Обнаружен Inf в компоненте функционала";
+        result.value = std::numeric_limits<double>::infinity();
+        return result;
+    }
+
+    // Проверка на барьерный коллапс
+    if (diag.raw_repel > 1e15) {
+        result.status = FunctionalStatus::BARRIER_COLLAPSE;
+        diag.has_numerical_anomaly = true;
+        diag.anomaly_description = "Барьерный коллапс: полином слишком близко к запрещённой точке";
+    }
+
+    // Применение нормализации
+    double norm_approx = diag.raw_approx / normalization_params_.scale_approx;
+    double norm_repel = diag.raw_repel / normalization_params_.scale_repel;
+    double norm_reg = diag.raw_reg / normalization_params_.scale_reg;
+
+    diag.normalized_approx = norm_approx * normalization_params_.weight_approx;
+    diag.normalized_repel = norm_repel * normalization_params_.weight_repel;
+    diag.normalized_reg = norm_reg * normalization_params_.weight_reg;
+
+    // Суммарный функционал
+    result.value = diag.normalized_approx + diag.normalized_repel + diag.normalized_reg;
+    diag.total_functional = result.value;
+
+    // Вычисление долей компонент
+    if (result.value > 0) {
+        diag.share_approx = (diag.normalized_approx / result.value) * 100.0;
+        diag.share_repel = (diag.normalized_repel / result.value) * 100.0;
+        diag.share_reg = (diag.normalized_reg / result.value) * 100.0;
+    }
+
+    // Диагностика аппроксимации
+    fill_approx_diagnostics(param, q, diag);
+
+    // Диагностика отталкивания
+    diag.min_repulsion_distance = repel_result.min_distance;
+    diag.max_repulsion_distance = repel_result.max_distance;
+    diag.repulsion_barrier_active = repel_result.barrier_activated;
+    diag.repulsion_violations = repel_result.critical_count;
+
+    // Диагностика регуляризации
+    if (config_.gamma > 0) {
+        diag.second_deriv_norm = std::sqrt(diag.raw_reg / config_.gamma);
+    } else {
+        diag.second_deriv_norm = 0.0;
+    }
+
+    // Проверка на переполнение
+    if (result.value > 1e20) {
+        result.status = FunctionalStatus::OVERFLOW;
+        diag.has_numerical_anomaly = true;
+        diag.anomaly_description = "Переполнение функционала (> 1e20)";
+    }
+
+    // Проверка на конфликт критериев
+    if (diag.raw_approx > 1e10 && diag.raw_repel > 1e10) {
+        result.status = FunctionalStatus::CRITERIA_CONFLICT;
+    }
+
+    // Проверка на пустые наборы точек
+    if (config_.approx_points.empty() && config_.repel_points.empty()) {
+        result.status = FunctionalStatus::EMPTY_APPROX_POINTS;
+    } else if (config_.approx_points.empty()) {
+        result.status = FunctionalStatus::EMPTY_APPROX_POINTS;
+    } else if (config_.repel_points.empty()) {
+        result.status = FunctionalStatus::EMPTY_REPEL_POINTS;
+    }
+
+    return result;
+}
+
+void FunctionalEvaluator::fill_approx_diagnostics(const CompositePolynomial& param,
+                                                 const std::vector<double>& q,
+                                                 FunctionalDiagnostics& diag) const {
+    double max_res = 0.0;
+    double min_res = std::numeric_limits<double>::infinity();
+    double sum_res = 0.0;
+    int count = 0;
+
+    for (const auto& point : config_.approx_points) {
+        double P_int = param.interpolation_basis.evaluate(point.x);
+        double W = param.weight_multiplier.evaluate(point.x);
+        double Q = param.correction_poly.evaluate_Q_with_coeffs(point.x, q);
+        double F = P_int + Q * W;
+
+        double error = std::abs(F - point.value);
+        max_res = std::max(max_res, error);
+        min_res = std::min(min_res, error);
+        sum_res += error;
+        count++;
+    }
+
+    diag.max_residual = max_res;
+    diag.min_residual = std::isfinite(min_res) ? min_res : 0.0;
+    diag.mean_residual = count > 0 ? sum_res / count : 0.0;
+}
+
+void FunctionalEvaluator::fill_repel_diagnostics(const CompositePolynomial& param,
+                                                const std::vector<double>& q,
+                                                FunctionalDiagnostics& diag,
+                                                const RepulsionResult& repel_result) const {
+    diag.min_repulsion_distance = repel_result.min_distance;
+    diag.max_repulsion_distance = repel_result.max_distance;
+    diag.repulsion_barrier_active = repel_result.barrier_activated;
+    diag.repulsion_violations = repel_result.critical_count;
+}
+
+void FunctionalEvaluator::initialize_normalization(const CompositePolynomial& param,
+                                                   const std::vector<double>& q) {
+    // Вычисляем характерные масштабы на начальном приближении
+    Components initial_comp = evaluate_components(param, q);
+
+    normalization_params_.scale_approx = std::max(1.0, initial_comp.approx_component);
+    normalization_params_.scale_repel = std::max(1.0, initial_comp.repel_component);
+    normalization_params_.scale_reg = std::max(1.0, initial_comp.reg_component);
+
+    // Устанавливаем нормализованные веса
+    normalization_params_.weight_approx = 1.0 / normalization_params_.scale_approx;
+    normalization_params_.weight_repel = 1.0 / normalization_params_.scale_repel;
+    normalization_params_.weight_reg = config_.gamma / normalization_params_.scale_reg;
 }
 
 } // namespace mixed_approx
