@@ -240,3 +240,13 @@ target_link_libraries(test_4_3_optimization_stopping_criteria
     GTest::gtest_main
 )
 gtest_discover_tests(test_4_3_optimization_stopping_criteria)
+
+# Тест шага 5.1 - защита от особенностей отталкивающего члена
+add_executable(test_5_1_barrier_singularity_protection
+    test_5_1_barrier_singularity_protection.cpp
+)
+target_link_libraries(test_5_1_barrier_singularity_protection
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_5_1_barrier_singularity_protection)
