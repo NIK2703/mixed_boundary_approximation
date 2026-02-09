@@ -200,3 +200,13 @@ target_link_libraries(test_step_3_2
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_3_2)
+
+# Тест шага 3.3 - градиент с улучшенной барьерной защитой, нормализацией и верификацией
+add_executable(test_step_3_3
+    test_step_3_3.cpp
+)
+target_link_libraries(test_step_3_3
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_3_3)

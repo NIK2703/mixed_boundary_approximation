@@ -392,6 +392,117 @@ public:
      */
     const NormalizationParams& get_normalization_params() const;
     
+    // ============== Шаг 3.3: Градиент с улучшенной барьерной защитой ==============
+    
+    /**
+     * @brief Структура для хранения диагностики градиента
+     */
+    struct GradientDiagnostics {
+        double norm_approx;              ///< Норма градиента аппроксимации
+        double norm_repel;               ///< Норма градиента отталкивания
+        double norm_reg;                 ///< Норма градиента регуляризации
+        double norm_total;               ///< Общая норма градиента
+        
+        int critical_zone_points;        ///< Количество точек в критической зоне при вычислении градиента отталкивания
+        int warning_zone_points;         ///< Количество точек в предупредительной зоне
+        
+        double max_grad_component;       ///< Максимальная компонента градиента
+        double min_grad_component;       ///< Минимальная компонента градиента
+        
+        std::vector<double> grad_approx; ///< Градиент аппроксимации (для отладки)
+        std::vector<double> grad_repel;  ///< Градиент отталкивания (для отладки)
+        std::vector<double> grad_reg;    ///< Градиент регуляризации (для отладки)
+        
+        GradientDiagnostics()
+            : norm_approx(0.0), norm_repel(0.0), norm_reg(0.0), norm_total(0.0)
+            , critical_zone_points(0), warning_zone_points(0)
+            , max_grad_component(0.0), min_grad_component(0.0) {}
+    };
+    
+    /**
+     * @brief Результат численной верификации градиента
+     */
+    struct GradientVerificationResult {
+        bool success;                    ///< Флаг успешной верификации
+        double relative_error;           ///< Относительная ошибка
+        int failed_component;            ///< Индекс компоненты с ошибкой (-1 если все OK)
+        std::string message;             ///< Описание результата
+        
+        GradientVerificationResult()
+            : success(false), relative_error(0.0), failed_component(-1) {}
+    };
+    
+    /**
+     * @brief Вычисление градиента с устойчивой барьерной защитой (шаг 3.3)
+     * @param param параметризация
+     * @param q коэффициенты Q(x)
+     * @param grad вектор градиента (будет заполнен)
+     * @param diag диагностика градиента (опционально, может быть nullptr)
+     */
+    void compute_gradient_robust(const CompositePolynomial& param,
+                                 const std::vector<double>& q,
+                                 std::vector<double>& grad,
+                                 GradientDiagnostics* diag = nullptr) const;
+    
+    /**
+     * @brief Нормализация градиента с адаптивными весами (шаг 3.3, раздел 5)
+     * @param grad_approx градиент аппроксимации
+     * @param grad_repel градиент отталкивания
+     * @param grad_reg градиент регуляризации
+     * @param normalized_grad выходной нормализованный градиент
+     * @param scaling_factors выходные коэффициенты нормализации
+     */
+    void normalize_gradient(const std::vector<double>& grad_approx,
+                           const std::vector<double>& grad_repel,
+                           const std::vector<double>& grad_reg,
+                           std::vector<double>& normalized_grad,
+                           std::vector<double>& scaling_factors) const;
+    
+    /**
+     * @brief Численная верификация градиента методом конечных разностей (шаг 3.3, раздел 6)
+     * @param param параметризация
+     * @param q коэффициенты Q(x)
+     * @param h шаг конечных разностей (по умолчанию 1e-6)
+     * @param test_component компонента для тестирования (-1 = все)
+     * @return результат верификации
+     */
+    GradientVerificationResult verify_gradient_numerical(
+        const CompositePolynomial& param,
+        const std::vector<double>& q,
+        double h = 1e-6,
+        int test_component = -1) const;
+    
+    /**
+     * @brief Построение кэшей для ускорения вычисления градиента (шаг 3.3, раздел 7)
+     * @param param параметризация (будет модифицирована для добавления кэшей)
+     * @param points_x аппроксимирующие точки
+     * @param points_y отталкивающие точки
+     */
+    void build_gradient_caches(CompositePolynomial& param,
+                              const std::vector<WeightedPoint>& points_x,
+                              const std::vector<RepulsionPoint>& points_y) const;
+    
+    /**
+     * @brief Вычисление градиента с использованием кэшей (оптимизированная версия)
+     * @param param параметризация с построенными кэшами
+     * @param q коэффициенты Q(x)
+     * @param grad выходной градиент
+     * @param use_normalization использовать ли нормализацию
+     */
+    void compute_gradient_cached(const CompositePolynomial& param,
+                                const std::vector<double>& q,
+                                std::vector<double>& grad,
+                                bool use_normalization = true) const;
+    
+    /**
+     * @brief Получение диагностики градиента
+     * @param param параметризация
+     * @param q коэффициенты Q(x)
+     * @return структура с диагностикой
+     */
+    GradientDiagnostics get_gradient_diagnostics(const CompositePolynomial& param,
+                                                 const std::vector<double>& q) const;
+    
 private:
     /**
      * @brief Вычисление аппроксимирующего компонента J_approx = Σ_i |f(x_i) - F(x_i)|^2 / σ_i
