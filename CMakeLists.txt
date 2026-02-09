@@ -126,6 +126,7 @@ add_library(mixed_approximation STATIC
     src/solution_validator.cpp
     src/barrier_safety_monitor.cpp
     src/variable_normalizer.cpp
+    src/overfitting_detector.cpp
 )
 
 target_include_directories(mixed_approximation

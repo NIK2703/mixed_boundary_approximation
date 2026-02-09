@@ -260,3 +260,13 @@ target_link_libraries(test_5_2_variable_normalization_scaling
     GTest::gtest_main
 )
 gtest_discover_tests(test_5_2_variable_normalization_scaling)
+
+# Тест шага 5.3 - диагностика переобучения
+add_executable(test_5_3_overfitting_detection_diagnostics
+    test_5_3_overfitting_detection_diagnostics.cpp
+)
+target_link_libraries(test_5_3_overfitting_detection_diagnostics
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_5_3_overfitting_detection_diagnostics)
