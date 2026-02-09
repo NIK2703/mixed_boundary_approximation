@@ -1,5 +1,7 @@
 #include "mixed_approximation/composite_polynomial.h"
 #include "mixed_approximation/gauss_quadrature.h"
+#include "mixed_approximation/polynomial.h"
+#include "mixed_approximation/interpolation_basis.h"
 #include <sstream>
 #include <iostream>
 #include <limits>
@@ -255,6 +257,53 @@ bool CompositePolynomial::verify_representations_consistency(int num_test_points
     }
     
     return true;
+}
+
+Polynomial CompositePolynomial::build_polynomial(const std::vector<double>& q_coeffs) const {
+    if (!is_valid()) {
+        throw std::invalid_argument("Cannot build polynomial from invalid CompositePolynomial: " + validation_message);
+    }
+    
+    int n_free = num_free_params;
+    if (static_cast<int>(q_coeffs.size()) != n_free) {
+        throw std::invalid_argument("Invalid number of coefficients for Q(x): expected " +
+                                    std::to_string(n_free) + ", got " + std::to_string(q_coeffs.size()));
+    }
+    
+    // Построение корректирующего полинома Q(x)
+    Polynomial Q(q_coeffs.empty() ? 0 : static_cast<int>(q_coeffs.size() - 1));
+    if (!q_coeffs.empty()) {
+        Q.setCoefficients(q_coeffs);
+    }
+    
+    // Построение весового множителя W(x)
+    Polynomial W(weight_multiplier.degree());
+    if (!weight_multiplier.coeffs.empty()) {
+        W.setCoefficients(weight_multiplier.coeffs);
+    } else {
+        // Построение через корни (fallback)
+        std::vector<InterpolationNode> roots_as_nodes;
+        for (double r : weight_multiplier.roots) {
+            roots_as_nodes.emplace_back(r, 0.0);
+        }
+        W = build_interpolation_multiplier(roots_as_nodes);
+    }
+    
+    // Произведение Q(x) * W(x)
+    Polynomial QW = Q * W;
+    
+    // Построение базисного интерполяционного полинома P_int(x)
+    std::vector<InterpolationNode> interp_nodes;
+    for (size_t i = 0; i < interpolation_basis.nodes.size(); ++i) {
+        double node_x = interpolation_basis.nodes[i];
+        if (interpolation_basis.is_normalized) {
+            node_x = node_x * interpolation_basis.x_scale + interpolation_basis.x_center;
+        }
+        interp_nodes.emplace_back(node_x, interpolation_basis.values[i]);
+    }
+    Polynomial P_int = build_lagrange_polynomial(interp_nodes);
+    
+    return P_int + QW;
 }
 
 double compute_regularization_via_components(const CompositePolynomial& F, double gamma) {

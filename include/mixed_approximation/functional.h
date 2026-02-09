@@ -275,6 +275,12 @@ private:
      * Использует epsilon для предотвращения деления на ноль
      */
     double safe_repel_distance(double poly_value, double target_value) const;
+    
+    /**
+     * @brief Получение максимального веса отталкивающих барьеров
+     * @return максимальное значение B_j среди всех отталкивающих точек
+     */
+    double get_max_repel_weight() const;
 };
 
 // ============== Шаг 2.1.7.10: FunctionalEvaluator для CompositePolynomial ==============

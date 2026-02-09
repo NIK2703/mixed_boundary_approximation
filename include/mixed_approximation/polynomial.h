@@ -4,9 +4,13 @@
 #include <vector>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include "types.h"
 
 namespace mixed_approx {
+
+// Forward declaration
+class Polynomial;
 
 /**
  * @brief Класс для работы с алгебраическим полиномом
@@ -20,6 +24,11 @@ private:
     int degree_;                   // степень полинома
     
 public:
+    /**
+     * @brief Конструктор по умолчанию (нулевой полином степени -1)
+     */
+    Polynomial();
+    
     /**
      * @brief Конструктор по коэффициентам
      * @param coeffs вектор коэффициентов в порядке убывания степеней
@@ -70,6 +79,12 @@ public:
      * @param coeffs новый вектор коэффициентов
      */
     void setCoefficients(const std::vector<double>& coeffs);
+    
+    /**
+     * @brief Проверка инициализации полинома
+     * @return true если полином инициализирован (есть коэффициенты)
+     */
+    bool is_initialized() const { return !coeffs_.empty(); }
     
     /**
      * @brief Сложение двух полиномов
@@ -124,30 +139,27 @@ public:
     Polynomial minus_scalar(double scalar) const;
 };
 
-// ============== Вспомогательные функции ==============
-
 /**
- * @brief Вычисление интеграла от (P''(x))^2 на [a, b] аналитически
- * Для полинома P(x) = Σ a_k x^k, P''(x) = Σ k*(k-1)*a_k x^{k-2}
- * Интеграл вычисляется как Σ_i Σ_j a_i * a_j * (b^{i+j-3} - a^{i+j-3}) / (i+j-3)
+ * @brief Вычисление интеграла от квадрата второй производной полинома
+ * ∫_a^b (P''(x))^2 dx
  * @param poly полином
- * @param a начало интервала
- * @param b конец интервала
+ * @param a нижний предел интегрирования
+ * @param b верхний предел интегрирования
  * @return значение интеграла
  */
 double integrate_second_derivative_squared(const Polynomial& poly, double a, double b);
 
 /**
- * @brief Построение интерполяционного полинома Лагранжа по заданным узлам
- * @param nodes узлы интерполяции (InterpolationNode)
- * @return полином степени m-1, удовлетворяющий F(z_e) = f(z_e)
+ * @brief Построение интерполяционного полинома Лагранжа по узлам
+ * @param nodes вектор интерполяционных узлов (x, значение f(x))
+ * @return полином Лагранжа P(x) = Σ f(z_e) * L_e(x)
  */
 Polynomial build_lagrange_polynomial(const std::vector<InterpolationNode>& nodes);
 
 /**
- * @brief Построение весового множителя W(x) = Π_{e} (x - z_e)
- * @param nodes узлы (InterpolationNode, значение value игнорируется)
- * @return полином степени m
+ * @brief Построение множителя W(x) = Π (x - z_e)
+ * @param nodes интерполяционные узлы
+ * @return полином W(x)
  */
 Polynomial build_interpolation_multiplier(const std::vector<InterpolationNode>& nodes);
 

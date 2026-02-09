@@ -410,24 +410,6 @@ enum class ValidationStatus {
     FAILED         // Есть ошибки
 };
 
-/**
- * @brief Результат валидации параметризации
- */
-struct ValidationResult {
-    ValidationStatus status;
-    std::string message;
-    double max_interpolation_error;
-    double condition_number;
-    bool numerically_stable;
-    
-    ValidationResult()
-        : status(ValidationStatus::UNVALIDATED)
-        , message("Not validated")
-        , max_interpolation_error(0.0)
-        , condition_number(0.0)
-        , numerically_stable(false) {}
-};
-
 } // namespace mixed_approx
 
 #endif // MIXED_APPROXIMATION_PARAMETERIZATION_DATA_H

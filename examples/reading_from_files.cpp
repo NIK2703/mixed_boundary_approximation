@@ -68,23 +68,25 @@ int main() {
         }
         std::cout << "Configuration is valid!\n\n";
         
+        // Создаем данные задачи оптимизации из конфигурации
+        OptimizationProblemData data(config);
+        
         // Создание и решение задачи смешанной аппроксимации
         std::cout << "Creating MixedApproximation method...\n";
-        MixedApproximation method(config);
+        MixedApproximation method;
         
-        // Создание оптимизатора
-        auto optimizer = std::make_unique<AdaptiveGradientDescentOptimizer>();
-        optimizer->set_parameters(
-            1000,    // max iterations
-            1e-6,    // gradient tolerance
-            1e-8,    // objective tolerance
-            0.01     // initial step
-        );
+        // Число свободных параметров = степень корректирующего полинома + 1
+        int n_free = config.polynomial_degree + 1;
+        
+        // Создание оптимизатора (L-BFGS-B)
+        auto optimizer = std::make_unique<LBFGSOptimizer>();
+        optimizer->set_parameters(1000, 1e-6, 1e-8, 0.01);
         
         std::cout << "Starting optimization...\n";
+        std::cout << "Number of free parameters: " << n_free << "\n\n";
         
         // Выполнение оптимизации
-        OptimizationResult result = method.solve(std::move(optimizer));
+        OptimizationResult result = method.solve(data, n_free, std::move(optimizer));
         
         // Вывод результатов
         std::cout << "\n=== Optimization Results ===\n";
@@ -93,8 +95,10 @@ int main() {
         std::cout << "Iterations: " << result.iterations << "\n";
         std::cout << "Final objective value: " << result.final_objective << "\n";
         
+        // Получаем и выводим коэффициенты полинома
         std::cout << "\nPolynomial coefficients (highest degree first):\n";
-        const auto& coeffs = result.coefficients;
+        Polynomial poly = method.get_polynomial();
+        const auto& coeffs = poly.coefficients();
         for (size_t i = 0; i < coeffs.size(); ++i) {
             int power = static_cast<int>(coeffs.size() - 1 - i);
             std::cout << "  a_" << power << " = " << coeffs[i] << "\n";
@@ -112,17 +116,8 @@ int main() {
             std::cout << "  Point " << i << ": " << distances[i] << "\n";
         }
         
-        // Вывод компонент функционала
-        auto components = method.get_functional_components();
-        std::cout << "\nFunctional components:\n";
-        std::cout << "  Approximation: " << components.approx_component << "\n";
-        std::cout << "  Repel: " << components.repel_component << "\n";
-        std::cout << "  Regularization: " << components.reg_component << "\n";
-        std::cout << "  Total: " << components.total << "\n";
-        
         // Вывод значений полинома в нескольких точках
         std::cout << "\nPolynomial evaluation:\n";
-        Polynomial poly = method.get_polynomial();
         for (double x = 0.0; x <= 10.0; x += 1.0) {
             std::cout << "  F(" << x << ") = " << poly.evaluate(x) << "\n";
         }

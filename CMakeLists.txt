@@ -123,6 +123,7 @@ add_library(mixed_approximation
     src/optimization_post_processor.cpp
     src/constrained_polynomial.cpp
     src/lbfgs_optimizer.cpp
+    src/solution_validator.cpp
 )
 
 target_include_directories(mixed_approximation

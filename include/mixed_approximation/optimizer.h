@@ -3,6 +3,8 @@
 
 #include "types.h"
 #include "functional.h"
+#include "convergence_monitor.h"
+#include "objective_functor.h"
 #include <vector>
 #include <string>
 
@@ -16,13 +18,22 @@ public:
     virtual ~Optimizer() = default;
     
     /**
-     * @brief Оптимизация функционала
-     * @param functional функционал для минимизации
+     * @brief Оптимизация функционала (с ObjectiveFunctor)
+     * @param functor функтор для вычисления значения и градиента функционала
+     * @param initial_q начальные коэффициенты корректирующего полинома Q(x)
+     * @return результат оптимизации
+     */
+    virtual OptimizationResult optimize(const ObjectiveFunctor& functor,
+                                        const std::vector<double>& initial_q) = 0;
+    
+    /**
+     * @brief Оптимизация функционала (с Functional - для обратной совместимости)
+     * @param functional функционал для вычисления значения и градиента
      * @param initial_coeffs начальные коэффициенты полинома
      * @return результат оптимизации
      */
-    virtual OptimizationResult optimize(const Functional& functional, 
-                                        const std::vector<double>& initial_coeffs) = 0;
+    virtual OptimizationResult optimize(const Functional& functional,
+                                        const std::vector<double>& initial_coeffs);
     
     /**
      * @brief Установка параметров оптимизатора
@@ -31,8 +42,8 @@ public:
      * @param tol_objective допуск по изменению функционала
      * @param initial_step начальный шаг (для некоторых методов)
      */
-    virtual void set_parameters(int max_iterations, 
-                                double tol_gradient, 
+    virtual void set_parameters(int max_iterations,
+                                double tol_gradient,
                                 double tol_objective,
                                 double initial_step = 0.01) {
         max_iterations_ = max_iterations;
@@ -41,11 +52,20 @@ public:
         initial_step_ = initial_step;
     }
     
+    /**
+     * @brief Установка внешнего монитора сходимости
+     * @param monitor указатель на монитор (может быть nullptr)
+     */
+    virtual void set_convergence_monitor(ConvergenceMonitor* monitor) {
+        monitor_ = monitor;
+    }
+    
 protected:
     int max_iterations_ = 1000;
     double tol_gradient_ = 1e-6;
     double tol_objective_ = 1e-8;
     double initial_step_ = 0.01;
+    ConvergenceMonitor* monitor_ = nullptr;  // внешний монитор (если задан)
 };
 
 /**
@@ -53,6 +73,9 @@ protected:
  */
 class GradientDescentOptimizer : public Optimizer {
 public:
+    OptimizationResult optimize(const ObjectiveFunctor& functor,
+                                const std::vector<double>& initial_coeffs) override;
+    
     OptimizationResult optimize(const Functional& functional,
                                 const std::vector<double>& initial_coeffs) override;
 };
@@ -62,6 +85,9 @@ public:
  */
 class AdaptiveGradientDescentOptimizer : public Optimizer {
 public:
+    OptimizationResult optimize(const ObjectiveFunctor& functor,
+                                const std::vector<double>& initial_coeffs) override;
+    
     OptimizationResult optimize(const Functional& functional,
                                 const std::vector<double>& initial_coeffs) override;
 };
@@ -76,6 +102,9 @@ class LBFGSOptimizer : public Optimizer {
 public:
     LBFGSOptimizer();
     ~LBFGSOptimizer();
+    
+    OptimizationResult optimize(const ObjectiveFunctor& functor,
+                                const std::vector<double>& initial_coeffs) override;
     
     OptimizationResult optimize(const Functional& functional,
                                 const std::vector<double>& initial_coeffs) override;
@@ -116,6 +145,13 @@ private:
     std::vector<double> lower_bounds_;
     std::vector<double> upper_bounds_;
     bool bounds_set_;
+    
+    /**
+     * @brief Внутренняя реализация оптимизации для Functional
+     */
+    template<typename FunctionalType>
+    OptimizationResult optimize_impl(const FunctionalType& functional,
+                                     const std::vector<double>& initial_coeffs);
 };
 
 } // namespace mixed_approx

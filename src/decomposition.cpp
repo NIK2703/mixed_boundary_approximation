@@ -26,11 +26,16 @@ Polynomial DecompositionResult::build_polynomial(const std::vector<double>& q_co
                                     std::to_string(n_free) + ", got " + std::to_string(q_coeffs.size()));
     }
     
+    // Создаём Q(x) - корректирующий полином
     Polynomial Q(q_coeffs.empty() ? 0 : static_cast<int>(q_coeffs.size() - 1));
     if (!q_coeffs.empty()) {
         Q.setCoefficients(q_coeffs);
+    } else {
+        // Явно устанавливаем коэффициент 0 для нулевого полинома степени 0
+        Q.setCoefficients({0.0});
     }
     
+    // Создаём W(x) - весовой множитель
     Polynomial W(weight_multiplier.degree());
     if (!weight_multiplier.coeffs.empty()) {
         W.setCoefficients(weight_multiplier.coeffs);
@@ -44,6 +49,7 @@ Polynomial DecompositionResult::build_polynomial(const std::vector<double>& q_co
     
     Polynomial QW = Q * W;
     
+    // Строим P_int(x) - интерполяционный полином
     std::vector<InterpolationNode> interp_nodes;
     for (size_t i = 0; i < interpolation_basis.nodes.size(); ++i) {
         double node_x = interpolation_basis.nodes[i];
@@ -225,13 +231,32 @@ DecompositionResult Decomposer::decompose(const Parameters& params) {
     }
     
     result.interpolation_basis.build(
-        nodes, 
-        values, 
+        nodes,
+        values,
         InterpolationMethod::BARYCENTRIC,
         params.interval_start,
         params.interval_end,
         true,
         true
+    );
+    
+    // Инициализация корректирующего полинома Q(x)
+    int deg_Q = n - result.metadata.m_eff; // степень Q = n - m_eff
+    if (deg_Q < 0) deg_Q = 0;
+    double interval_center = (params.interval_start + params.interval_end) * 0.5;
+    double interval_scale = (params.interval_end - params.interval_start) * 0.5;
+    result.correction_poly.initialize(deg_Q, CorrectionPolynomial::choose_basis_type(deg_Q),
+                                      interval_center, interval_scale);
+    result.correction_poly.initialize_zero();
+    
+    // Построение композитного полинома
+    result.composite_poly.build(
+        result.interpolation_basis,
+        result.weight_multiplier,
+        result.correction_poly,
+        params.interval_start,
+        params.interval_end,
+        EvaluationStrategy::LAZY
     );
     
     double value_range = analyze_value_range(values);

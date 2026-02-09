@@ -741,13 +741,13 @@ InitializationResult InitializationStrategySelector::initialize(
     return result;
 }
 
-InitializationQualityMetrics InitializationStrategySelector::compute_metrics(
+InitializationMetrics InitializationStrategySelector::compute_metrics(
     const CompositePolynomial& param,
     const OptimizationProblemData& data,
     const std::vector<double>& coeffs,
     double initial_objective) {
     
-    InitializationQualityMetrics metrics;
+    InitializationMetrics metrics;
     
     // Вычисление J_random как среднего значения функционала для случайных коэффициентов
     std::mt19937 rng(123);

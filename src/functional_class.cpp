@@ -175,4 +175,12 @@ double Functional::safe_repel_distance(double poly_value, double target_value) c
     return std::max(std::abs(diff), config_.epsilon);
 }
 
+double Functional::get_max_repel_weight() const {
+    double max_weight = 0.0;
+    for (const auto& point : config_.repel_points) {
+        max_weight = std::max(max_weight, point.weight);
+    }
+    return max_weight;
+}
+
 } // namespace mixed_approx

@@ -1,8 +1,13 @@
 #include "mixed_approximation/polynomial.h"
+#include "mixed_approximation/types.h"
 #include <stdexcept>
 #include <algorithm>
 
 namespace mixed_approx {
+
+Polynomial::Polynomial()
+    : coeffs_(), degree_(-1) {
+}
 
 Polynomial::Polynomial(const std::vector<double>& coeffs) 
     : coeffs_(coeffs) {

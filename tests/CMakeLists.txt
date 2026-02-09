@@ -232,3 +232,13 @@ target_link_libraries(test_step_4_2
     GTest::gtest_main
 )
 gtest_discover_tests(test_step_4_2)
+
+# Тест шага 4.3 - расширенные критерии сходимости и валидация решений
+add_executable(test_step_4_3
+    test_step_4_3.cpp
+)
+target_link_libraries(test_step_4_3
+    mixed_approximation
+    GTest::gtest_main
+)
+gtest_discover_tests(test_step_4_3)

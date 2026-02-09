@@ -187,6 +187,13 @@ struct CompositePolynomial {
     std::string get_diagnostic_info() const;
     
     /**
+     * @brief Построение полного полинома F(x) из коэффициентов Q(x)
+     * @param q_coeffs коэффициенты Q(x) в порядке убывания степеней [q_{deg_Q}, ..., q_0]
+     * @return полином F(x) = P_int(x) + Q(x)·W(x)
+     */
+    Polynomial build_polynomial(const std::vector<double>& q_coeffs) const;
+    
+    /**
      * @brief Проверка валидности структуры
      * @return true, если структура корректна
      */

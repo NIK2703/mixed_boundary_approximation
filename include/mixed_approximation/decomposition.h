@@ -6,6 +6,7 @@
 #include "weight_multiplier.h"
 #include "interpolation_basis.h"
 #include "correction_polynomial.h"
+#include "composite_polynomial.h"
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -62,13 +63,17 @@ struct DecompositionResult {
     // Корректирующий полином Q(x)
     CorrectionPolynomial correction_poly;  // параметризация корректирующей компоненты
     
+    // Композитный полином F(x) = P_int(x) + Q(x)·W(x)
+    CompositePolynomial composite_poly;
+    
     DecompositionResult()
         : metadata()
         , weight_multiplier()
         , interpolation_basis()
         , p_int_polynomial(Polynomial(0))
         , caches_built(false)
-        , correction_poly() {}
+        , correction_poly()
+        , composite_poly() {}
     
     /**
      * @brief Проверка корректности разложения

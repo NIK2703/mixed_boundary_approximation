@@ -16,56 +16,6 @@ class ObjectiveFunctor;
 class OptimizationProblemData;
 
 /**
- * @brief Расширенные стратегии инициализации коэффициентов перед оптимизацией
- */
-enum class InitializationStrategy {
-    ZERO,              ///< Нулевая инициализация (P_int(x))
-    LEAST_SQUARES,     ///< Взвешенный МНК с Cholesky/SVD
-    RANDOM,            ///< Случайная инициализация с возмущением
-    HIERARCHICAL,      ///< Иерархическая инициализация (для n > 15)
-    MULTI_START        ///< Многостартовая инициализация (ансамбль)
-};
-
-/**
- * @brief Метрики качества инициализации
- */
-struct InitializationQualityMetrics {
-    double objective_ratio;           ///< J_initial / J_random (цель: < 0.5)
-    double min_barrier_distance;      ///< min_dist_to_barrier / ε_safe (цель: > 10)
-    double rms_residual_norm;         ///< ||residuals||_RMS / std(f) (цель: < 1.0)
-    double condition_number;         ///< Число обусловленности матрицы A
-    bool interpolation_ok;            ///< Выполнены ли интерполяционные условия
-    bool barriers_safe;               ///< Безопасны ли барьеры
-    
-    InitializationQualityMetrics()
-        : objective_ratio(0.0)
-        , min_barrier_distance(0.0)
-        , rms_residual_norm(0.0)
-        , condition_number(0.0)
-        , interpolation_ok(false)
-        , barriers_safe(false) {}
-};
-
-/**
- * @brief Результат инициализации с расширенной диагностикой
- */
-struct InitializationResult {
-    std::vector<double> initial_coeffs;
-    double initial_objective;
-    bool success;
-    std::string message;
-    InitializationStrategy strategy_used;
-    InitializationQualityMetrics metrics;
-    std::vector<std::string> warnings;
-    std::vector<std::string> recommendations;
-    
-    InitializationResult()
-        : initial_objective(0.0)
-        , success(false)
-        , strategy_used(InitializationStrategy::ZERO) {}
-};
-
-/**
  * @brief Класс для автоматического выбора стратегии инициализации (шаг 4.2)
  */
 class InitializationStrategySelector {
@@ -143,23 +93,23 @@ private:
                                                      double perturbation_scale = 0.1);
     
     static InitializationResult hierarchical_initialization(const CompositePolynomial& param,
+                                                            const OptimizationProblemData& data,
+                                                            ObjectiveFunctor& functor);
+    
+    static InitializationResult multi_start_initialization(const CompositePolynomial& param,
                                                            const OptimizationProblemData& data,
                                                            ObjectiveFunctor& functor);
     
-    static InitializationResult multi_start_initialization(const CompositePolynomial& param,
-                                                          const OptimizationProblemData& data,
-                                                          ObjectiveFunctor& functor);
-    
     // Вспомогательные методы для МНК
     static Eigen::MatrixXd build_normal_matrix(const OptimizationProblemData& data,
-                                               const CompositePolynomial& param,
-                                               int n_free,
-                                               double& lambda_regularization);
+                                                const CompositePolynomial& param,
+                                                int n_free,
+                                                double& lambda_regularization);
     
     static Eigen::VectorXd solve_linear_system(Eigen::MatrixXd& A,
-                                              const Eigen::VectorXd& b,
-                                              bool& success,
-                                              std::string& message);
+                                               const Eigen::VectorXd& b,
+                                               bool& success,
+                                               std::string& message);
     
     static void apply_barrier_correction(const CompositePolynomial& param,
                                          const OptimizationProblemData& data,
@@ -172,10 +122,10 @@ private:
                                         std::vector<double>& coeffs);
     
     // Вычисление метрик
-    static InitializationQualityMetrics compute_metrics(const CompositePolynomial& param,
-                                                       const OptimizationProblemData& data,
-                                                       const std::vector<double>& coeffs,
-                                                       double initial_objective);
+    static InitializationMetrics compute_metrics(const CompositePolynomial& param,
+                                                 const OptimizationProblemData& data,
+                                                 const std::vector<double>& coeffs,
+                                                 double initial_objective);
 };
 
 } // namespace mixed_approx

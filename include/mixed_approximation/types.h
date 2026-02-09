@@ -4,8 +4,12 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace mixed_approx {
+
+// Forward declaration
+class Polynomial;
 
 /**
  * @brief Структура для представления точки с весом (аппроксимирующие точки)
@@ -92,19 +96,114 @@ struct ApproximationConfig {
 };
 
 /**
+ * @brief Результат валидации решения
+ */
+struct ValidationResult {
+    bool is_valid;                      // общий результат валидации
+    bool numerical_correct;             // численная корректность (нет NaN/Inf)
+    bool interpolation_ok;              // интерполяционные условия выполнены
+    bool barriers_safe;                 // безопасность барьеров
+    bool physically_plausible;          // физическая правдоподобность
+    bool correction_applied;            // была ли применена коррекция
+    std::string message;                // диагностическое сообщение
+    std::vector<std::string> warnings;  // предупреждения (если есть)
+    
+    // Поля для параметризации (опционально, int вместо enum для избежания циклических зависимостей)
+    int status;                         // 0=UNVALIDATED, 1=PASSED, 2=WARNING, 3=FAILED
+    double max_interpolation_error;
+    double condition_number;
+    bool numerically_stable;
+    
+    ValidationResult()
+        : is_valid(false)
+        , numerical_correct(false)
+        , interpolation_ok(false)
+        , barriers_safe(false)
+        , physically_plausible(false)
+        , correction_applied(false)
+        , status(0)
+        , max_interpolation_error(0.0)
+        , condition_number(0.0)
+        , numerically_stable(false) {}
+};
+
+/**
+ * @brief Стратегия инициализации
+ */
+enum class InitializationStrategy {
+    ZERO = 0,              // нулевой полином Q(x) = 0
+    INTERPOLATION,         // Q(x) построенный через интерполяцию невязки
+    LEAST_SQUARES,         // Q(x) через метод наименьших квадратов
+    HIERARCHICAL,          // иерархический подход с несколькими стратегиями
+    MULTI_START,           // множественные запуски с разными стратегиями
+    RANDOM,                // случайная инициализация
+    BARRIER_PERTURBATION   // возмущение для избежания барьеров (шаг 1.2.6)
+};
+
+/**
+ * @brief Метрики инициализации
+ */
+struct InitializationMetrics {
+    double initial_objective;
+    double objective_ratio;
+    double min_barrier_distance;
+    double rms_residual_norm;
+    double condition_number;
+    bool interpolation_ok;
+    bool barriers_safe;
+    
+    InitializationMetrics()
+        : initial_objective(0.0)
+        , objective_ratio(0.0)
+        , min_barrier_distance(0.0)
+        , rms_residual_norm(0.0)
+        , condition_number(0.0)
+        , interpolation_ok(false)
+        , barriers_safe(false) {}
+};
+
+/**
+ * @brief Результат инициализации (построения начального приближения)
+ */
+struct InitializationResult {
+    bool success;                       // флаг успешности
+    std::string message;                // сообщение о результате
+    std::vector<double> initial_coeffs; // начальные коэффициенты Q(x)
+    InitializationStrategy strategy_used;  // использованная стратегия инициализации
+    double elapsed_time;                // время построения (мс)
+    double initial_objective;            // начальное значение функционала
+    InitializationMetrics metrics;      // метрики инициализации
+    std::vector<std::string> recommendations;  // рекомендации
+    
+    InitializationResult()
+        : success(false)
+        , strategy_used(InitializationStrategy::ZERO)
+        , elapsed_time(0.0)
+        , initial_objective(0.0) {}
+};
+
+/**
  * @brief Результат оптимизации
  */
 struct OptimizationResult {
-    std::vector<double> coefficients;  // коэффициенты полинома [a_n, a_{n-1}, ..., a_0] (полные)
-    double final_objective;            // конечное значение функционала
-    int iterations;                    // количество итераций
-    bool success;                      // флаг успешности оптимизации
-    std::string message;               // сообщение о результате
+    std::vector<double> coefficients;      // коэффициенты Q(x) [q_{n_free-1}, ..., q_0]
+    double final_objective;                // конечное значение функционала
+    int iterations;                        // количество итераций
+    bool success;                          // флаг успешности оптимизации
+    bool converged;                        // флаг достижения сходимости
+    std::string message;                   // сообщение о результате
+    double elapsed_time;                   // время оптимизации (мс)
+    std::shared_ptr<Polynomial> final_polynomial;  // построенный полином F(x)
+    ValidationResult validation;           // результат валидации решения
+    std::string diagnostic_report;         // детальный диагностический отчёт
     
     OptimizationResult()
         : final_objective(0.0)
         , iterations(0)
-        , success(false) {}
+        , success(false)
+        , converged(false)
+        , elapsed_time(0.0)
+        , final_polynomial(nullptr) {}
 };
 
 } // namespace mixed_approx
