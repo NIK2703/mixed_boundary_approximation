@@ -33,7 +33,12 @@ endif()
 add_library(mixed_approximation
     src/polynomial.cpp
     src/validator.cpp
-    src/functional.cpp
+    src/validator_checks.cpp
+    src/functional_diagnostics.cpp
+    src/functional_class.cpp
+    src/functional_evaluator_core.cpp
+    src/functional_evaluator_robust.cpp
+    src/functional_evaluator_cached.cpp
     src/optimizer.cpp
     src/mixed_approximation.cpp
     src/config_reader.cpp
@@ -58,6 +63,8 @@ add_library(mixed_approximation
     src/parameterization_verification_svd.cpp
     src/parameterization_verification_tests.cpp
     src/parameterization_data.cpp
+    src/edge_case_handler_utilities.cpp
+    src/edge_case_handler_handlers.cpp
     src/edge_case_handler.cpp
     src/numerical_anomaly_monitor.cpp
     src/edge_case_result_formatter.cpp
